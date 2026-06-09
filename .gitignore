@@ -28,6 +28,8 @@ env/
 *.log
 *.pid
 *.tmp
+server.log
+wait_port.ps1
 
 # 业务
 # 草稿和临时文件都不进 git
