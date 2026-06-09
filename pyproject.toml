@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capcut-draft"
+version = "0.1.0"
+description = "数字人视频 + B-roll + ASR 字幕 → 剪映草稿 自动生成工具"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+authors = [
+    { name = "小马" },
+]
+dependencies = [
+    "pyJianYingDraft>=0.2.0,<1.0.0",
+    "funasr>=1.1.0",
+    "modelscope>=1.18.0",
+    "imageio-ffmpeg>=0.5.0",
+    "soundfile>=0.12.0",
+    "scipy>=1.11.0",
+    "numpy>=1.24.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+capcut-draft = "capcut_draft.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

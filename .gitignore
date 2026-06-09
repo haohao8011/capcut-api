@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 运行时
+*.log
+*.pid
+*.tmp
+
+# 业务
+# 草稿和临时文件都不进 git
+outputs/
+*.draft/
+.*_stage/
+*.wav
+*.mp3
+.flac
+
+# 用户素材（inputs 目录里放素材，但具体大文件不入库）
+inputs/broll/
+inputs/*.mp4
+inputs/*.mov
+inputs/*.wav
+inputs/*.mp3
+
+# 保留 inputs 目录本身和 README
+!inputs/.gitkeep
+!inputs/broll/.gitkeep
+
+# 模型缓存
+models/
+*.bin
+*.onnx
+*.pt
+*.pth
+
+# 环境配置
+.env
+.env.local
