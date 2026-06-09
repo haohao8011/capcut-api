@@ -4,238 +4,882 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>capcut-draft · 数字人 → 剪映草稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+  /* ===== design tokens ===== */
+  :root {
+    --bg-0: #0a0b0e;
+    --bg-1: #11131a;
+    --bg-2: #181b24;
+    --bg-3: #21242f;
+    --line: #2a2e3a;
+    --line-strong: #3a3f4f;
+    --fg-0: #e8eaf0;
+    --fg-1: #aab0c0;
+    --fg-2: #6c7385;
+    --fg-3: #454a5a;
+    --accent: #00d4ff;          /* 电压蓝 */
+    --accent-2: #ff6a00;        /* 警示橙 */
+    --accent-3: #6effa1;        /* 成功绿 */
+    --danger: #ff4d6d;
+    --shadow-1: 0 1px 0 rgba(255,255,255,.04) inset, 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 8px 24px rgba(0,0,0,.5);
+    --r-sm: 4px;
+    --r-md: 6px;
+    --r-lg: 10px;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Noto Sans SC", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-         max-width: 980px; margin: 24px auto; padding: 0 16px; color: #222; background: #f7f7f9; }
-  h1 { font-size: 22px; margin-bottom: 4px; }
-  .sub { color: #666; font-size: 13px; margin-bottom: 24px; }
-  .card { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px;
-          box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-  .card h2 { font-size: 15px; margin: 0 0 12px; }
-  .drop { border: 2px dashed #c4c8d0; border-radius: 6px; padding: 18px; text-align: center;
-          color: #666; cursor: pointer; transition: all .2s; }
-  .drop.drag, .drop:hover { border-color: #4a90e2; background: #f0f7ff; color: #4a90e2; }
-  .drop input { display: none; }
-  .file-list { margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; color: #444; }
-  .file-list li { padding: 4px 8px; background: #f0f2f5; border-radius: 4px; margin: 3px 0;
-                  display: flex; justify-content: space-between; align-items: center; }
-  .file-list .x { color: #c00; cursor: pointer; }
-  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-  label { font-size: 13px; color: #555; }
-  input[type=text], input[type=number] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; width: 80px; }
-  button { background: #4a90e2; color: #fff; border: none; border-radius: 4px; padding: 8px 16px;
-           cursor: pointer; font-size: 14px; }
-  button:hover { background: #3a7bc8; }
-  button:disabled { background: #aaa; cursor: not-allowed; }
-  button.secondary { background: #fff; color: #4a90e2; border: 1px solid #4a90e2; }
-  .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 16px; }
-  .opts > div { display: flex; justify-content: space-between; align-items: center; }
-  .job { border: 1px solid #e0e2e6; border-radius: 6px; padding: 10px 14px; margin: 8px 0;
-         background: #fff; }
-  .job .head { display: flex; justify-content: space-between; align-items: center; }
-  .job .name { font-weight: 500; }
-  .status { font-size: 12px; padding: 2px 8px; border-radius: 10px; color: #fff; }
-  .status.queued  { background: #888; }
-  .status.running { background: #f0a020; }
-  .status.success { background: #4caf50; }
-  .status.failed  { background: #e53935; }
-  .job .meta { font-size: 12px; color: #888; margin-top: 4px; }
-  .progress { font-size: 12px; color: #555; background: #f5f5f7; padding: 6px 8px;
-              border-radius: 4px; max-height: 120px; overflow: auto; margin-top: 6px;
-              font-family: ui-monospace, Consolas, monospace; white-space: pre-wrap; }
-  .job .actions { margin-top: 6px; display: flex; gap: 8px; }
-  .toast { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border-radius: 4px;
-           color: #fff; font-size: 13px; opacity: 0; transition: opacity .3s; z-index: 1000; }
-  .toast.show { opacity: 1; }
-  .toast.info { background: #4a90e2; }
-  .toast.error { background: #e53935; }
+  html, body { background: var(--bg-0); color: var(--fg-0); font-family: var(--sans); margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(1200px 600px at 90% -10%, rgba(0,212,255,.06), transparent 60%),
+      radial-gradient(800px 500px at -10% 110%, rgba(255,106,0,.04), transparent 60%),
+      var(--bg-0);
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ===== layout ===== */
+  .app { max-width: 1280px; margin: 0 auto; padding: 28px 24px 80px; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 18px; margin-bottom: 28px; border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .logo {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent) 0%, #4a8df8 100%);
+    display: grid; place-items: center; color: #0a0b0e; font-weight: 800;
+    box-shadow: 0 0 24px rgba(0,212,255,.4);
+  }
+  .brand h1 { margin: 0; font-size: 18px; letter-spacing: .5px; }
+  .brand small { display: block; font-family: var(--mono); color: var(--fg-2); font-size: 11px; margin-top: 2px; letter-spacing: 1px; }
+  .topbar .meta { display: flex; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
+  .topbar .meta a { color: var(--fg-1); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1.05fr .95fr;
+    gap: 20px;
+  }
+  @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+
+  /* ===== card ===== */
+  .card {
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-1);
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+    background: rgba(255,255,255,.015);
+  }
+  .card-head .num {
+    font-family: var(--mono); font-weight: 700; color: var(--accent);
+    background: rgba(0,212,255,.12); border-radius: 4px;
+    padding: 2px 8px; font-size: 12px; margin-right: 10px;
+  }
+  .card-head h2 { font-size: 14px; font-weight: 500; margin: 0; letter-spacing: .5px; }
+  .card-head .hint { font-size: 11px; color: var(--fg-2); font-family: var(--mono); }
+  .card-body { padding: 18px; }
+
+  /* ===== drop zone ===== */
+  .drop {
+    display: block; position: relative;
+    border: 1.5px dashed var(--line-strong);
+    border-radius: var(--r-md);
+    padding: 28px 16px; text-align: center; color: var(--fg-1);
+    background: var(--bg-3);
+    cursor: pointer; transition: all .15s ease;
+    user-select: none;
+  }
+  .drop:hover, .drop:focus-within { border-color: var(--accent); color: var(--fg-0); }
+  .drop.drag { border-color: var(--accent); background: rgba(0,212,255,.06); transform: scale(1.005); }
+  .drop input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    /* keep click-through but allow keyboard via label */
+  }
+  .drop .icon { font-size: 28px; line-height: 1; margin-bottom: 8px; opacity: .8; }
+  .drop .label { font-size: 14px; font-weight: 500; }
+  .drop .sub { font-size: 12px; color: var(--fg-2); font-family: var(--mono); margin-top: 4px; }
+
+  .file-list { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; }
+  .file-list:empty { margin: 0; }
+  .file-list li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; background: var(--bg-2);
+    border: 1px solid var(--line); border-radius: var(--r-sm);
+    font-size: 13px;
+  }
+  .file-list .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-0); }
+  .file-list .fsize { color: var(--fg-2); font-family: var(--mono); font-size: 11px; }
+  .file-list .x {
+    width: 22px; height: 22px; line-height: 20px; text-align: center;
+    color: var(--fg-2); cursor: pointer; border-radius: 4px; font-size: 16px;
+    background: transparent; border: 0; padding: 0;
+  }
+  .file-list .x:hover { color: var(--danger); background: rgba(255,77,109,.1); }
+  .file-list .empty { color: var(--fg-3); font-size: 12px; padding: 4px 0; }
+
+  /* ===== form ===== */
+  .opt-group { margin-bottom: 18px; }
+  .opt-group:last-child { margin-bottom: 0; }
+  .opt-group .gtitle {
+    font-family: var(--mono); font-size: 11px; color: var(--fg-2);
+    text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .opt-group .gtitle::before { content: ""; width: 4px; height: 12px; background: var(--accent); border-radius: 1px; }
+  .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 14px; }
+  .opt {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 10px; background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+  }
+  .opt label { font-size: 12px; color: var(--fg-1); cursor: pointer; }
+  .opt input[type=text], .opt input[type=number] {
+    background: var(--bg-0); border: 1px solid var(--line-strong);
+    color: var(--fg-0); padding: 5px 8px; border-radius: var(--r-sm);
+    font-family: var(--mono); font-size: 12px; width: 90px;
+  }
+  .opt input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,212,255,.15); }
+  .opt input[type=text] { width: 130px; }
+  .opt-pair { display: flex; align-items: center; gap: 4px; }
+  .opt-pair input { width: 70px; }
+  .opt-pair .x { color: var(--fg-3); font-family: var(--mono); }
+  .opt-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .opt-check input { appearance: none; -webkit-appearance: none; width: 36px; height: 20px; border-radius: 12px; background: var(--bg-0); border: 1px solid var(--line-strong); position: relative; cursor: pointer; transition: all .15s; }
+  .opt-check input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--fg-2); transition: all .15s; }
+  .opt-check input:checked { background: rgba(0,212,255,.15); border-color: var(--accent); }
+  .opt-check input:checked::after { left: 18px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+  /* ===== buttons ===== */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: #0a0b0e; border: 0;
+    padding: 10px 20px; border-radius: var(--r-sm); cursor: pointer;
+    font-weight: 600; font-size: 13px; font-family: var(--sans);
+    transition: all .15s; box-shadow: 0 0 0 0 rgba(0,212,255,.4);
+  }
+  .btn:hover:not(:disabled) { background: #1ddfff; box-shadow: 0 0 16px rgba(0,212,255,.4); }
+  .btn:disabled { background: var(--bg-3); color: var(--fg-3); cursor: not-allowed; box-shadow: none; }
+  .btn.secondary {
+    background: transparent; color: var(--fg-1); border: 1px solid var(--line-strong);
+  }
+  .btn.secondary:hover:not(:disabled) { color: var(--fg-0); border-color: var(--accent); background: rgba(0,212,255,.05); }
+  .btn.danger { color: var(--danger); border-color: rgba(255,77,109,.3); }
+  .btn.danger:hover:not(:disabled) { background: rgba(255,77,109,.1); border-color: var(--danger); }
+  .btn .kbd { font-family: var(--mono); font-size: 10px; opacity: .7; }
+
+  .actions-row { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+  .status-text { font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
+  .status-text.ok { color: var(--accent-3); }
+  .status-text.err { color: var(--danger); }
+
+  /* ===== jobs panel ===== */
+  .jobs-list { display: flex; flex-direction: column; gap: 10px; }
+  .jobs-empty {
+    padding: 40px 20px; text-align: center; color: var(--fg-3);
+    font-family: var(--mono); font-size: 12px; letter-spacing: 1px;
+    border: 1px dashed var(--line); border-radius: var(--r-md);
+  }
+  .job {
+    border: 1px solid var(--line); border-radius: var(--r-md);
+    background: var(--bg-2); overflow: hidden;
+    transition: border-color .15s;
+  }
+  .job:hover { border-color: var(--line-strong); }
+  .job.running { border-color: rgba(255,106,0,.4); box-shadow: 0 0 0 1px rgba(255,106,0,.1); }
+  .job.success { border-color: rgba(110,255,161,.3); }
+  .job.failed  { border-color: rgba(255,77,109,.4); }
+  .job .head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; cursor: pointer;
+  }
+  .job .head:hover { background: rgba(255,255,255,.02); }
+  .job .glyph {
+    width: 28px; height: 28px; display: grid; place-items: center;
+    border-radius: 50%; font-family: var(--mono); font-weight: 700; font-size: 14px;
+    background: var(--bg-3); color: var(--fg-1); flex-shrink: 0;
+  }
+  .job.queued  .glyph { background: rgba(108,115,133,.2); color: var(--fg-1); }
+  .job.running .glyph { background: rgba(255,106,0,.15); color: var(--accent-2); animation: pulse 1.4s ease-in-out infinite; }
+  .job.success .glyph { background: rgba(110,255,161,.15); color: var(--accent-3); }
+  .job.failed  .glyph { background: rgba(255,77,109,.15); color: var(--danger); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+  .job .body { flex: 1; min-width: 0; }
+  .job .name { font-size: 14px; font-weight: 500; color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job .meta { font-family: var(--mono); font-size: 11px; color: var(--fg-2); margin-top: 2px; }
+  .job .meta .id { color: var(--fg-3); }
+  .job .status-tag {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1.2px;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 4px;
+    background: var(--bg-3); color: var(--fg-1); flex-shrink: 0;
+  }
+  .job.queued  .status-tag { color: var(--fg-1); }
+  .job.running .status-tag { color: var(--accent-2); background: rgba(255,106,0,.12); }
+  .job.success .status-tag { color: var(--accent-3); background: rgba(110,255,161,.12); }
+  .job.failed  .status-tag { color: var(--danger); background: rgba(255,77,109,.12); }
+
+  .job .progress {
+    height: 3px; background: var(--bg-3); position: relative; overflow: hidden;
+  }
+  .job .progress .bar {
+    height: 100%; background: var(--accent); width: 0%;
+    transition: width .4s ease;
+  }
+  .job.running .progress .bar {
+    background: var(--accent-2);
+    width: 100%; animation: indet 1.6s ease-in-out infinite;
+  }
+  .job.success .progress .bar { background: var(--accent-3); width: 100%; }
+  .job.failed  .progress .bar { background: var(--danger); width: 100%; }
+  .job.queued   .progress .bar { width: 0%; }
+  @keyframes indet {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .job .details {
+    border-top: 1px solid var(--line); padding: 12px 14px;
+    background: var(--bg-1); display: none;
+  }
+  .job.expanded .details { display: block; }
+  .job .log {
+    font-family: var(--mono); font-size: 11px; color: var(--fg-1);
+    background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-sm);
+    padding: 8px 10px; max-height: 200px; overflow: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .job .log:empty::before { content: "(暂无日志)"; color: var(--fg-3); }
+  .job .row-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .job .err-msg {
+    color: var(--danger); font-family: var(--mono); font-size: 11px;
+    background: rgba(255,77,109,.08); padding: 6px 8px; border-radius: var(--r-sm);
+    margin-bottom: 8px;
+  }
+
+  /* ===== toast ===== */
+  .toast-stack { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+  .toast {
+    background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: var(--r-sm);
+    padding: 10px 14px; font-size: 13px;
+    box-shadow: var(--shadow-2);
+    animation: slide-in .25s ease;
+  }
+  .toast.error { border-left-color: var(--danger); }
+  .toast.success { border-left-color: var(--accent-3); }
+  .toast.warn { border-left-color: var(--accent-2); }
+  @keyframes slide-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  .toast.fadeout { animation: slide-out .2s ease forwards; }
+  @keyframes slide-out { to { transform: translateX(20px); opacity: 0; } }
+
+  /* ===== footer ===== */
+  .foot {
+    margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line);
+    color: var(--fg-3); font-size: 11px; font-family: var(--mono);
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+
+  /* small utilities */
+  .row { display: flex; gap: 10px; align-items: center; }
+  .spacer { flex: 1; }
+  .mono { font-family: var(--mono); }
+  .dim { color: var(--fg-2); }
 </style>
 </head>
 <body>
-<h1>capcut-draft</h1>
-<div class="sub">数字人视频 + B-roll + ASR 字幕 → 剪映草稿（API 文档：<a href="/docs" target="_blank">/docs</a>）</div>
+<div class="app">
 
-<div class="card">
-  <h2>1. 上传数字人主视频</h2>
-  <label class="drop" id="drop-main">
-    <input type="file" id="file-main" accept="video/*">
-    点击或拖入视频文件（mp4 / mov / mkv / avi / webm）
-  </label>
-  <ul class="file-list" id="list-main"></ul>
-</div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">C</div>
+      <div>
+        <h1>capcut-draft</h1>
+        <small>数字人 + B-roll + ASR 字幕 → 剪映草稿</small>
+      </div>
+    </div>
+    <div class="meta">
+      <a href="/docs" target="_blank" rel="noopener">API DOCS</a>
+      <span>v0.1.0</span>
+    </div>
+  </header>
 
-<div class="card">
-  <h2>2. 上传 B-roll 素材（可多个）</h2>
-  <label class="drop" id="drop-broll">
-    <input type="file" id="file-broll" accept="video/*" multiple>
-    点击或拖入多个视频文件
-  </label>
-  <ul class="file-list" id="list-broll"></ul>
-</div>
+  <div class="grid">
+    <!-- ===== 左列：上传 + 配置 ===== -->
+    <div>
+      <!-- Step 1: 主视频 -->
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <span class="num">01</span>
+            <h2>数字人主视频</h2>
+          </div>
+          <span class="hint" id="hint-main">需要 1 个</span>
+        </div>
+        <div class="card-body">
+          <label class="drop" id="drop-main" tabindex="0">
+            <input type="file" id="file-main" accept="video/*">
+            <div class="icon">▶</div>
+            <div class="label">点击选择 / 拖入视频</div>
+            <div class="sub">MP4 · MOV · MKV · AVI · WEBM</div>
+          </label>
+          <ul class="file-list" id="list-main"></ul>
+        </div>
+      </section>
 
-<div class="card">
-  <h2>3. 任务选项</h2>
-  <div class="opts">
-    <div><label>草稿名</label><input type="text" id="opt-name" value="AI合成"></div>
-    <div><label>停顿阈值 (秒)</label><input type="number" id="opt-pause" value="0.6" step="0.1"></div>
-    <div><label>最小切点间隔 (秒)</label><input type="number" id="opt-mincut" value="2.5" step="0.1"></div>
-    <div><label>最多切点数</label><input type="number" id="opt-maxcuts" placeholder="不限"></div>
-    <div><label>B-roll 停留 (秒)</label><input type="number" id="opt-brolldur" value="2.5" step="0.1"></div>
-    <div><label>画布宽×高</label>
-      <span><input type="number" id="opt-w" value="1080" style="width:60px"> ×
-            <input type="number" id="opt-h" value="1920" style="width:60px"></span></div>
-    <div><label>FPS</label><input type="number" id="opt-fps" value="30"></div>
-    <div><label>写字幕</label><input type="checkbox" id="opt-subs" checked></div>
-    <div><label>跳过 ASR</label><input type="checkbox" id="opt-skipasr"></div>
+      <!-- Step 2: B-roll -->
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <span class="num">02</span>
+            <h2>B-roll 素材</h2>
+          </div>
+          <span class="hint" id="hint-broll">需要 ≥ 1 个</span>
+        </div>
+        <div class="card-body">
+          <label class="drop" id="drop-broll" tabindex="0">
+            <input type="file" id="file-broll" accept="video/*" multiple>
+            <div class="icon">▦</div>
+            <div class="label">点击选择 / 拖入多个</div>
+            <div class="sub">穿插素材，越多越不容易重复</div>
+          </label>
+          <ul class="file-list" id="list-broll"></ul>
+        </div>
+      </section>
+
+      <!-- Step 3: 选项 -->
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <span class="num">03</span>
+            <h2>处理参数</h2>
+          </div>
+        </div>
+        <div class="card-body">
+
+          <div class="opt-group">
+            <div class="gtitle">基础</div>
+            <div class="opts">
+              <div class="opt">
+                <label for="opt-name">草稿名</label>
+                <input type="text" id="opt-name" value="AI合成">
+              </div>
+            </div>
+          </div>
+
+          <div class="opt-group">
+            <div class="gtitle">切点策略</div>
+            <div class="opts">
+              <div class="opt">
+                <label for="opt-pause">停顿阈值 (秒)</label>
+                <input type="number" id="opt-pause" value="0.6" step="0.1" min="0">
+              </div>
+              <div class="opt">
+                <label for="opt-mincut">最小切点间隔 (秒)</label>
+                <input type="number" id="opt-mincut" value="2.5" step="0.1" min="0">
+              </div>
+              <div class="opt">
+                <label for="opt-maxcuts">最多切点数</label>
+                <input type="number" id="opt-maxcuts" placeholder="不限" min="1">
+              </div>
+              <div class="opt">
+                <label for="opt-brolldur">B-roll 停留 (秒)</label>
+                <input type="number" id="opt-brolldur" value="2.5" step="0.1" min="0.1">
+              </div>
+            </div>
+          </div>
+
+          <div class="opt-group">
+            <div class="gtitle">输出</div>
+            <div class="opts">
+              <div class="opt">
+                <label>画布</label>
+                <div class="opt-pair">
+                  <input type="number" id="opt-w" value="1080" min="1" aria-label="宽度">
+                  <span class="x">×</span>
+                  <input type="number" id="opt-h" value="1920" min="1" aria-label="高度">
+                </div>
+              </div>
+              <div class="opt">
+                <label for="opt-fps">FPS</label>
+                <input type="number" id="opt-fps" value="30" min="1" max="120">
+              </div>
+            </div>
+          </div>
+
+          <div class="opt-group">
+            <div class="gtitle">开关</div>
+            <div class="opts">
+              <div class="opt">
+                <label for="opt-subs" class="opt-check">
+                  <input type="checkbox" id="opt-subs" checked>
+                  <span>写字幕</span>
+                </label>
+              </div>
+              <div class="opt">
+                <label for="opt-skipasr" class="opt-check">
+                  <input type="checkbox" id="opt-skipasr">
+                  <span>跳过 ASR（用固定切点）</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions-row">
+            <button class="btn" id="btn-start" disabled>开始处理</button>
+            <span class="status-text" id="status"></span>
+            <span class="spacer"></span>
+            <button class="btn secondary" id="btn-reset" type="button">清空</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== 右列：任务 ===== -->
+    <div>
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <span class="num">04</span>
+            <h2>任务</h2>
+          </div>
+          <span class="hint" id="jobs-count">0 / 0</span>
+        </div>
+        <div class="card-body">
+          <div id="jobs" class="jobs-list">
+            <div class="jobs-empty">暂无任务 · 上传后点「开始处理」</div>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
-  <div style="margin-top:12px">
-    <button id="btn-start" disabled>开始处理</button>
-    <span id="status" style="margin-left:12px;color:#666;font-size:13px"></span>
+
+  <div class="foot">
+    <span>capcut-draft · 由 pyJianYingDraft + FunASR 驱动</span>
+    <span class="mono">小马 ♥ 自动化</span>
   </div>
 </div>
 
-<div class="card">
-  <h2>任务列表 <button class="secondary" id="btn-refresh" style="float:right;padding:4px 10px;font-size:12px">刷新</button></h2>
-  <div id="jobs"></div>
-</div>
-
-<div class="toast" id="toast"></div>
+<div class="toast-stack" id="toasts" aria-live="polite"></div>
 
 <script>
-const $ = (id) => document.getElementById(id);
-const toast = (msg, type='info') => {
-  const t = $('toast'); t.textContent = msg; t.className = `toast show ${type}`;
-  setTimeout(() => t.className = 'toast', 2400);
+'use strict';
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+// ============== state ==============
+const state = {
+  main: [],     // [{id, name, size}]
+  broll: [],    // [{id, name, size}]
+  jobs: new Map(),  // id -> job
+  pollTimer: null,
 };
 
-let mainFileIds = [];
-let brollFileIds = [];
-
-// 上传 main
-async function uploadOne(file) {
-  const fd = new FormData(); fd.append('file', file);
-  const r = await fetch('/api/upload-main', {method:'POST', body: fd});
-  if (!r.ok) throw new Error('上传失败');
-  return (await r.json()).file_id;
+// ============== toast ==============
+const toasts = $('#toasts');
+function toast(msg, type = 'info', ms = 3200) {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  toasts.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('fadeout');
+    setTimeout(() => el.remove(), 220);
+  }, ms);
 }
-async function uploadMany(files) {
+
+// ============== format ==============
+function fmtSize(bytes) {
+  if (!bytes && bytes !== 0) return '';
+  const u = ['B', 'KB', 'MB', 'GB'];
+  let i = 0, n = bytes;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return `${n.toFixed(n >= 10 ? 0 : 1)} ${u[i]}`;
+}
+function basename(path) {
+  if (!path) return '';
+  const m = path.match(/[^\\/]+$/);
+  return m ? m[0] : path;
+}
+
+// ============== uploads ==============
+async function uploadFile(file, kind) {
+  // kind: 'main' | 'broll'
+  const url = kind === 'main' ? '/api/upload-main' : '/api/upload-broll';
   const fd = new FormData();
-  for (const f of files) fd.append('files', f);
-  const r = await fetch('/api/upload-broll', {method:'POST', body: fd});
-  if (!r.ok) throw new Error('上传失败');
-  return (await r.json()).file_ids;
+  if (kind === 'main') {
+    fd.append('file', file);
+  } else {
+    fd.append('files', file);
+  }
+  const r = await fetch(url, { method: 'POST', body: fd });
+  if (!r.ok) {
+    const txt = await r.text();
+    throw new Error(txt || `HTTP ${r.status}`);
+  }
+  return r.json();
 }
 
-function refreshLists() {
-  $('list-main').innerHTML = mainFileIds.length === 0
-    ? '' : mainFileIds.map((id, i) => `<li>主视频 #${i+1}: <code>${id}</code></li>`).join('');
-  $('list-broll').innerHTML = brollFileIds.length === 0
-    ? '' : brollFileIds.map((id, i) => `<li>B-roll #${i+1}: <code>${id}</code></li>`).join('');
-  $('btn-start').disabled = !(mainFileIds.length && brollFileIds.length);
+function renderLists() {
+  const renderOne = (kind) => {
+    const list = $(`#list-${kind}`);
+    const arr = state[kind];
+    $('#hint-' + kind).textContent = kind === 'main'
+      ? (arr.length ? `已选 ${arr.length} 个` : '需要 1 个')
+      : (arr.length ? `已选 ${arr.length} 个` : '需要 ≥ 1 个');
+    if (arr.length === 0) {
+      list.innerHTML = '<li class="empty">尚未选择文件</li>';
+      return;
+    }
+    list.innerHTML = arr.map((f, i) => `
+      <li data-i="${i}">
+        <span class="fname" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+        <span class="fsize">${fmtSize(f.size)}</span>
+        <button class="x" data-kind="${kind}" data-i="${i}" title="移除" aria-label="移除">×</button>
+      </li>
+    `).join('');
+  };
+  renderOne('main');
+  renderOne('broll');
+  $('#btn-start').disabled = !(state.main.length && state.broll.length);
 }
 
-function bindDrop(zoneId, inputId, handler) {
-  const zone = $(zoneId), input = $(inputId);
-  zone.addEventListener('click', () => input.click());
-  input.addEventListener('change', e => { for (const f of e.target.files) handler(f); input.value=''; });
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.classList.remove('drag');
-    for (const f of e.dataTransfer.files) handler(f);
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function handleUpload(file, kind) {
+  if (!file) return;
+  if (!file.type.startsWith('video/') && !/\.(mp4|mov|mkv|avi|webm|m4v)$/i.test(file.name)) {
+    toast(`不支持的格式: ${file.name}`, 'error');
+    return;
+  }
+  try {
+    const data = await uploadFile(file, kind);
+    const id = kind === 'main' ? data.file_id : data.file_ids[0];
+    if (kind === 'main') {
+      // 主视频只保留最新一个
+      state.main = [{ id, name: file.name, size: file.size }];
+    } else {
+      state.broll.push({ id, name: file.name, size: file.size });
+    }
+    renderLists();
+  } catch (e) {
+    toast(`上传失败: ${e.message || e}`, 'error');
+  }
+}
+
+function bindDrop(zoneId, inputId, kind) {
+  const zone = $(zoneId);
+  const input = $(inputId);
+
+  const trigger = () => input.click();
+  zone.addEventListener('click', (e) => {
+    // 防止点删除按钮时也触发 input
+    if (e.target.closest('.file-list')) return;
+    trigger();
+  });
+  zone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); trigger(); }
+  });
+  input.addEventListener('change', (e) => {
+    for (const f of Array.from(e.target.files)) handleUpload(f, kind);
+    e.target.value = '';  // 允许重复选同一文件
+  });
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', (e) => {
+    if (e.target === zone) zone.classList.remove('drag');
+  });
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag');
+    for (const f of Array.from(e.dataTransfer.files || [])) handleUpload(f, kind);
   });
 }
 
-bindDrop('drop-main', 'file-main', async (f) => {
-  try { mainFileIds.push(await uploadOne(f)); refreshLists(); }
-  catch (e) { toast(e.message, 'error'); }
-});
-bindDrop('drop-broll', 'file-broll', async (f) => {
-  try { const id = await uploadOne(f); brollFileIds.push(id); refreshLists(); }
-  catch (e) { toast(e.message, 'error'); }
+bindDrop('#drop-main', '#file-main', 'main');
+bindDrop('#drop-broll', '#file-broll', 'broll');
+
+// remove a file
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.file-list .x');
+  if (!btn) return;
+  const kind = btn.dataset.kind;
+  const i = parseInt(btn.dataset.i, 10);
+  if (state[kind] && state[kind][i]) {
+    state[kind].splice(i, 1);
+    renderLists();
+  }
 });
 
-// 启动任务
-$('btn-start').addEventListener('click', async () => {
-  $('btn-start').disabled = true;
-  $('status').textContent = '提交任务中...';
+// reset all
+$('#btn-reset').addEventListener('click', () => {
+  state.main = []; state.broll = [];
+  renderLists();
+  $('#status').textContent = '';
+});
+
+// ============== start job ==============
+$('#btn-start').addEventListener('click', async () => {
+  if (!state.main.length || !state.broll.length) return;
+  const btn = $('#btn-start');
+  btn.disabled = true;
+  $('#status').textContent = '提交任务…';
   const body = {
-    name: $('opt-name').value || 'AI合成',
-    main_file_id: mainFileIds[0],
-    broll_file_ids: brollFileIds,
+    name: $('#opt-name').value.trim() || 'AI合成',
+    main_file_id: state.main[0].id,
+    broll_file_ids: state.broll.map(f => f.id),
     options: {
-      pause_threshold: parseFloat($('opt-pause').value),
-      min_cut_interval: parseFloat($('opt-mincut').value),
-      max_cuts: $('opt-maxcuts').value ? parseInt($('opt-maxcuts').value) : null,
-      broll_duration: parseFloat($('opt-brolldur').value),
-      width: parseInt($('opt-w').value),
-      height: parseInt($('opt-h').value),
-      fps: parseFloat($('opt-fps').value),
-      add_subtitles: $('opt-subs').checked,
-      skip_asr: $('opt-skipasr').checked,
-    }
+      pause_threshold: parseFloat($('#opt-pause').value),
+      min_cut_interval: parseFloat($('#opt-mincut').value),
+      max_cuts: $('#opt-maxcuts').value ? parseInt($('#opt-maxcuts').value, 10) : null,
+      broll_duration: parseFloat($('#opt-brolldur').value),
+      width: parseInt($('#opt-w').value, 10),
+      height: parseInt($('#opt-h').value, 10),
+      fps: parseFloat($('#opt-fps').value),
+      add_subtitles: $('#opt-subs').checked,
+      skip_asr: $('#opt-skipasr').checked,
+    },
   };
   try {
-    const r = await fetch('/api/jobs', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    if (!r.ok) throw new Error((await r.json()).detail || '提交失败');
+    const r = await fetch('/api/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      try { const j = await r.json(); msg = j.detail || JSON.stringify(j); } catch {}
+      throw new Error(msg);
+    }
     const j = await r.json();
-    toast(`任务已创建: ${j.job_id}`);
-    $('status').textContent = '处理中...';
+    toast(`任务已创建 · ${j.job_id}`, 'success');
+    $('#status').textContent = '';
     refreshJobs();
-  } catch (e) { toast(e.message, 'error'); }
-  $('btn-start').disabled = false;
+    ensurePolling();
+  } catch (e) {
+    toast(`提交失败: ${e.message}`, 'error');
+    $('#status').textContent = '';
+  } finally {
+    btn.disabled = !(state.main.length && state.broll.length);
+  }
 });
 
-async function refreshJobs() {
-  const r = await fetch('/api/jobs');
-  const data = await r.json();
-  const html = data.jobs.length === 0
-    ? '<div style="color:#888;font-size:13px">暂无任务</div>'
-    : data.jobs.map(j => jobHtml(j)).join('');
-  $('jobs').innerHTML = html;
-  bindJobActions();
-}
+// ============== jobs ==============
+const STATUS_GLYPH = { queued: '◌', running: '◐', success: '✓', failed: '✕' };
 
 function jobHtml(j) {
-  return `<div class="job" id="job-${j.id}">
-    <div class="head">
-      <span class="name">${j.name} <small style="color:#888">(${j.id})</small></span>
-      <span class="status ${j.status}">${j.status}</span>
+  const expanded = j._expanded ? ' expanded' : '';
+  const isFinal = j.status === 'success' || j.status === 'failed';
+  const logText = (j._log || []).join('\n');
+  return `
+    <div class="job ${j.status}${expanded}" data-id="${j.id}">
+      <div class="head">
+        <div class="glyph">${STATUS_GLYPH[j.status] || '?'}</div>
+        <div class="body">
+          <div class="name">${escapeHtml(j.name || '(未命名)')}</div>
+          <div class="meta">
+            <span class="id">${j.id}</span> · 主 ${escapeHtml(basename(j.main_file))} · B-roll ${j.broll_count}
+            ${j._time ? '· ' + j._time : ''}
+          </div>
+        </div>
+        <span class="status-tag">${j.status}</span>
+      </div>
+      <div class="progress"><div class="bar"></div></div>
+      <div class="details">
+        ${j.error ? `<div class="err-msg">${escapeHtml(j.error)}</div>` : ''}
+        <div class="log">${escapeHtml(logText)}</div>
+        <div class="row-actions">
+          ${j.status === 'success' ? `<a class="btn secondary" href="/api/jobs/${j.id}/download" download>下载草稿 (.zip)</a>` : ''}
+          <button class="btn secondary" data-act="refresh">刷新日志</button>
+          ${j.status === 'failed' ? `<button class="btn secondary" data-act="retry">重新提交</button>` : ''}
+          <span class="spacer"></span>
+          <button class="btn secondary danger" data-act="del">删除</button>
+        </div>
+      </div>
     </div>
-    <div class="meta">主: ${j.main_file} · B-roll: ${j.broll_count} 个</div>
-    <div class="progress" id="prog-${j.id}"></div>
-    <div class="actions">
-      ${j.status === 'success' ? `<a href="/api/jobs/${j.id}/download"><button class="secondary">下载草稿</button></a>` : ''}
-      <button class="secondary" data-act="refresh" data-id="${j.id}">刷新进度</button>
-      <button class="secondary" data-act="del" data-id="${j.id}">删除</button>
-    </div>
-  </div>`;
+  `;
 }
 
-function bindJobActions() {
-  document.querySelectorAll('[data-act=refresh]').forEach(btn =>
-    btn.addEventListener('click', () => loadJobDetail(btn.dataset.id)));
-  document.querySelectorAll('[data-act=del]').forEach(btn =>
-    btn.addEventListener('click', async () => {
-      if (!confirm('确认删除？')) return;
-      await fetch('/api/jobs/' + btn.dataset.id, {method: 'DELETE'});
+function fmtTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function fmtDur(start, end) {
+  if (!start) return '';
+  const s = end ? end - start : (Date.now() / 1000 - start);
+  if (s < 60) return `${s.toFixed(0)}s`;
+  return `${Math.floor(s / 60)}m${(s % 60).toFixed(0).padStart(2, '0')}s`;
+}
+
+async function refreshJobs() {
+  let data;
+  try {
+    const r = await fetch('/api/jobs');
+    data = await r.json();
+  } catch (e) {
+    console.error('refreshJobs failed', e);
+    return;
+  }
+  // 保留已展开的 job 状态
+  const expandedIds = new Set($$('.job.expanded').map(el => el.dataset.id));
+  const logs = new Map();
+  for (const el of $$('.job')) {
+    const id = el.dataset.id;
+    const log = el.querySelector('.log');
+    if (log) logs.set(id, log.textContent);
+  }
+  // 保留 job 详细日志
+  const detailLogs = new Map(state.jobs);
+
+  const jobs = data.jobs || [];
+  const container = $('#jobs');
+  if (jobs.length === 0) {
+    container.innerHTML = '<div class="jobs-empty">暂无任务 · 上传后点「开始处理」</div>';
+  } else {
+    container.innerHTML = jobs.map(j => {
+      const prev = detailLogs.get(j.id);
+      const j2 = {
+        ...j,
+        _expanded: expandedIds.has(j.id),
+        _log: prev && prev.progress ? prev.progress : [],
+        _time: (j.started_at || j.created_at) ? `${fmtTime(j.created_at)}${j.finished_at ? ' · 用时 ' + fmtDur(j.started_at, j.finished_at) : (j.started_at ? ' · 跑 ' + fmtDur(j.started_at) : '')}` : '',
+      };
+      return jobHtml(j2);
+    }).join('');
+  }
+
+  // 更新内存
+  for (const j of jobs) {
+    if (state.jobs.has(j.id)) {
+      const prev = state.jobs.get(j.id);
+      prev.status = j.status;
+      prev.draft_path = j.draft_path;
+      prev.error = j.error;
+    } else {
+      state.jobs.set(j.id, { ...j, progress: [] });
+    }
+  }
+  // 拉取展开的 job 的详细日志
+  for (const id of expandedIds) {
+    loadJobDetail(id, /*silent*/ true);
+  }
+  // 计数
+  const running = jobs.filter(j => j.status === 'running' || j.status === 'queued').length;
+  $('#jobs-count').textContent = `${running} 运行中 / ${jobs.length} 总数`;
+
+  // 控制轮询
+  if (running > 0) ensurePolling(); else stopPolling();
+}
+
+async function loadJobDetail(id, silent = false) {
+  try {
+    const r = await fetch(`/api/jobs/${id}`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
+    state.jobs.set(id, j);
+    const el = $(`.job[data-id="${id}"] .log`);
+    if (el) el.textContent = (j.progress || []).join('\n') || '';
+    if (!silent && (j.status === 'success' || j.status === 'failed')) {
       refreshJobs();
-    }));
+    }
+  } catch (e) {
+    if (!silent) toast(`加载失败: ${e.message}`, 'error');
+  }
 }
 
-async function loadJobDetail(id) {
-  const r = await fetch('/api/jobs/' + id);
-  const j = await r.json();
-  const el = $(`prog-${id}`); if (el) el.textContent = (j.progress || []).join('\n') || '(无日志)';
-  // 状态变化就刷新列表
-  if (j.status === 'success' || j.status === 'failed') refreshJobs();
+$('#jobs').addEventListener('click', (e) => {
+  const jobEl = e.target.closest('.job');
+  if (!jobEl) return;
+  const id = jobEl.dataset.id;
+  // 行内按钮
+  const actBtn = e.target.closest('[data-act]');
+  if (actBtn) {
+    e.stopPropagation();
+    const act = actBtn.dataset.act;
+    if (act === 'refresh') loadJobDetail(id);
+    if (act === 'del') deleteJob(id);
+    if (act === 'retry') retryJob(id);
+    return;
+  }
+  // 点击 head 展开/收起
+  if (e.target.closest('.head')) {
+    jobEl.classList.toggle('expanded');
+    if (jobEl.classList.contains('expanded')) loadJobDetail(id, true);
+    return;
+  }
+});
+
+async function deleteJob(id) {
+  if (!confirm('确认删除这个任务？草稿和 zip 也会一起删掉。')) return;
+  try {
+    const r = await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    state.jobs.delete(id);
+    toast('已删除', 'success');
+    refreshJobs();
+  } catch (e) {
+    toast(`删除失败: ${e.message}`, 'error');
+  }
 }
 
-$('btn-refresh').addEventListener('click', refreshJobs);
+async function retryJob(id) {
+  const j = state.jobs.get(id);
+  if (!j) return;
+  if (!state.main.length || !state.broll.length) {
+    toast('重试需要先重新选择文件（重启服务后已上传的文件会丢失）', 'warn', 4000);
+    return;
+  }
+  const body = {
+    name: j.name,
+    main_file_id: state.main[0].id,
+    broll_file_ids: state.broll.map(f => f.id),
+    options: j.options || {},
+  };
+  try {
+    const r = await fetch('/api/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${r.status}`);
+    }
+    toast('已重新提交', 'success');
+    refreshJobs();
+    ensurePolling();
+  } catch (e) {
+    toast(`重试失败: ${e.message}`, 'error');
+  }
+}
 
-// 轮询
-setInterval(refreshJobs, 5000);
+// ============== polling ==============
+function ensurePolling() {
+  if (state.pollTimer) return;
+  state.pollTimer = setInterval(refreshJobs, 3000);
+}
+function stopPolling() {
+  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+}
+
+// 启动时先拉一次
 refreshJobs();
 </script>
 </body>
