@@ -1,4 +1,7 @@
-"""命令行入口：把整条 ASR → 切点 → 草稿流水线串起来。"""
+"""命令行入口：把整条 ASR → 切点 → 草稿流水线串起来。
+
+支持单视频和批量（--main 指向目录时自动遍历）。
+"""
 from __future__ import annotations
 
 import argparse
@@ -23,15 +26,82 @@ def _list_videos(folder: Path) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in exts)
 
 
+def _process_one(
+    main_path: Path,
+    brolls: list[Path],
+    out_dir: Path,
+    draft_name: str,
+    *,
+    pause_threshold: float,
+    min_cut_interval: float,
+    max_cuts: int | None,
+    broll_duration: float,
+    width: int,
+    height: int,
+    fps: float,
+    add_subtitles: bool,
+    skip_asr: bool,
+    log: logging.Logger,
+) -> str:
+    """处理单个主视频，返回草稿路径。"""
+    segments = []
+    cuts = []
+    total_dur = None
+
+    if not skip_asr:
+        log.info("[%s] ASR 转写中...", main_path.name)
+        result = transcribe(str(main_path), pause_threshold=pause_threshold)
+        segments = result.segments
+        cuts = result.cut_points
+        log.info("[%s] 字幕段: %d, 停顿切点: %d",
+                 main_path.name, len(segments), len(cuts))
+        for s in segments[:5]:
+            log.info("  [%.2f-%.2f] %s", s.start, s.end, s.text)
+    else:
+        from .builder import _probe_video_duration
+        try:
+            total_dur = _probe_video_duration(str(main_path))
+        except Exception as e:
+            log.error("[%s] 无法探测时长: %s", main_path.name, e)
+            raise
+
+    cuts = select_cut_points(
+        cuts,
+        min_interval=min_cut_interval,
+        max_cuts=max_cuts,
+        total_duration=total_dur,
+        fallback_interval=6.0,
+    )
+    log.info("[%s] 最终切点数: %d", main_path.name, len(cuts))
+
+    return build_draft(
+        main_video=str(main_path),
+        broll_clips=[str(p) for p in brolls],
+        segments=segments,
+        cut_points=cuts,
+        broll_duration=broll_duration,
+        out_dir=str(out_dir),
+        draft_name=draft_name,
+        width=width,
+        height=height,
+        fps=fps,
+        add_subtitles=add_subtitles,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="capcut-draft",
-        description="数字人视频 + B-roll + ASR 字幕 → 剪映草稿",
+        description="数字人视频 + B-roll + ASR 字幕 → 剪映草稿（支持单视频或批量）",
     )
-    parser.add_argument("--main", required=True, help="主视频（数字人/口播）路径")
+    parser.add_argument("--main", required=True,
+                        help="主视频（数字人/口播）路径，或数字人视频目录（批量）")
     parser.add_argument("--broll", required=True, help="B-roll 素材文件夹路径")
     parser.add_argument("--out", default="outputs", help="输出目录（默认 ./outputs）")
-    parser.add_argument("--name", default="AI合成", help="剪映草稿名称（默认 AI合成）")
+    parser.add_argument("--name", default="AI合成",
+                        help="单视频模式下的草稿名；批量模式下作为前缀（{name}=视频文件名）")
+    parser.add_argument("--name-template", default="{prefix}_{name}",
+                        help="批量模式下草稿名模板，可使用 {prefix} 和 {name}（视频名）")
     parser.add_argument("--width", type=int, default=1080)
     parser.add_argument("--height", type=int, default=1920)
     parser.add_argument("--fps", type=float, default=30.0)
@@ -58,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if not main_path.exists():
-        log.error("主视频不存在: %s", main_path)
+        log.error("主视频/目录不存在: %s", main_path)
         return 2
     if not broll_dir.exists() or not broll_dir.is_dir():
         log.error("B-roll 目录不存在: %s", broll_dir)
@@ -70,51 +140,57 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     log.info("找到 %d 个 B-roll 素材", len(brolls))
 
-    segments = []
-    cuts = []
-    if not args.skip_asr:
-        log.info("开始 ASR 转写（首次会下载模型，耐心等）...")
-        result = transcribe(str(main_path), pause_threshold=args.pause_threshold)
-        segments = result.segments
-        cuts = result.cut_points
-        log.info("字幕段: %d, 停顿切点: %d", len(segments), len(cuts))
-        # 打印前几条
-        for s in segments[:5]:
-            log.info("  [%.2f-%.2f] %s", s.start, s.end, s.text)
-        total_dur = None  # cutter 内部不强制回退
-    else:
-        # 跳过 ASR 时只探测一下主视频时长，用于 fallback 均匀切点
-        from .builder import _probe_video_duration
-        try:
-            total_dur = _probe_video_duration(str(main_path))
-        except Exception as e:
-            log.error("无法探测主视频时长: %s", e)
+    # 决定模式：单视频 or 批量
+    if main_path.is_dir():
+        mains = _list_videos(main_path)
+        if not mains:
+            log.error("主目录里没有视频文件: %s", main_path)
             return 2
+        log.info("批量模式: %d 个主视频", len(mains))
+        results: list[str] = []
+        for i, m in enumerate(mains, 1):
+            log.info("=" * 60)
+            log.info("[%d/%d] 处理: %s", i, len(mains), m.name)
+            draft_name = args.name_template.format(prefix=args.name, name=m.stem)
+            try:
+                p = _process_one(
+                    m, brolls, out_dir, draft_name,
+                    pause_threshold=args.pause_threshold,
+                    min_cut_interval=args.min_cut_interval,
+                    max_cuts=args.max_cuts,
+                    broll_duration=args.broll_duration,
+                    width=args.width,
+                    height=args.height,
+                    fps=args.fps,
+                    add_subtitles=not args.no_subtitles,
+                    skip_asr=args.skip_asr,
+                    log=log,
+                )
+                results.append(p)
+            except Exception as e:
+                log.error("处理 %s 失败: %s", m.name, e)
+                continue
+        log.info("=" * 60)
+        log.info("批量完成，共 %d 个草稿，输出在 %s", len(results), out_dir)
+        for p in results:
+            log.info("  - %s", p)
+    else:
+        draft_path = _process_one(
+            main_path, brolls, out_dir, args.name,
+            pause_threshold=args.pause_threshold,
+            min_cut_interval=args.min_cut_interval,
+            max_cuts=args.max_cuts,
+            broll_duration=args.broll_duration,
+            width=args.width,
+            height=args.height,
+            fps=args.fps,
+            add_subtitles=not args.no_subtitles,
+            skip_asr=args.skip_asr,
+            log=log,
+        )
+        log.info("完成。草稿目录: %s", draft_path)
+        log.info("打开剪映 → 媒体 → 导入 → 选择该文件夹即可。")
 
-    cuts = select_cut_points(
-        cuts,
-        min_interval=args.min_cut_interval,
-        max_cuts=args.max_cuts,
-        total_duration=total_dur,
-        fallback_interval=6.0,
-    )
-    log.info("最终切点数: %d", len(cuts))
-
-    draft_path = build_draft(
-        main_video=str(main_path),
-        broll_clips=[str(p) for p in brolls],
-        segments=segments,
-        cut_points=cuts,
-        broll_duration=args.broll_duration,
-        out_dir=str(out_dir),
-        draft_name=args.name,
-        width=args.width,
-        height=args.height,
-        fps=args.fps,
-        add_subtitles=not args.no_subtitles,
-    )
-    log.info("完成。草稿目录: %s", draft_path)
-    log.info("打开剪映 → 媒体 → 导入 → 选择该文件夹即可。")
     return 0
 
 
