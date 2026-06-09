@@ -41,30 +41,31 @@ B-roll 素材 ──┘                                                ├─→
 
 ```
 capcut-api/
-├── inputs/                 # 用户放素材
-│   ├── digital_human.mp4
+├── inputs/                 # 用户放素材（git 忽略具体文件）
+│   ├── README.md           # 放素材说明
+│   ├── .gitkeep
 │   └── broll/
-├── outputs/                # 生成的剪映草稿
+├── outputs/                # 生成的剪映草稿（git 忽略）
 ├── src/capcut_draft/       # 源码包
 ├── .venv/                  # 虚拟环境
+├── .gitignore
+├── pyproject.toml
 ├── requirements.txt
+├── run.ps1 / run.bat       # 一键运行脚本
 ├── README.md
 └── agents.md               # 本文件
 ```
 
-## 给 AI 助手的协作约定
+## 便利脚本
 
-1. **不要画蛇添足**：用户说"加字幕"就只加字幕，不顺手重构 or 加无关功能
-2. **改代码前先读**：对 `src/capcut_draft/` 下任何文件动手前必须先读
-3. **安装/环境相关操作要解释**：pip、PATH、注册表这类容易踩坑
-4. **destructive 操作需二次确认**：删目录、git reset、push --force 等
-5. **跑命令前确认 cwd**：始终在 `d:\Offices\Program\Python\capcut-api` 下执行
-6. **回答要短**：能用一句话说完的别用三句
-7. **代码注释用中文**，docstring 也用中文
+- **PowerShell**：`.\run.ps1`（默认跳过 ASR） / `.\run.ps1 -WithAsr`（跑 ASR） / `.\run.ps1 -MainPath other.mp4`
+- **CMD**：`run.bat [主视频] [broll 目录] [输出目录] [草稿名]`
 
-## 待办 / 已知问题
+## 已知问题 / 进度
 
-- [ ] 真实视频跑通端到端流程（需要用户提供素材）
-- [ ] pyJianYingDraft 不同版本 API 兼容（已用 try/except 兜底）
+- [x] 跳过 ASR 路径跑通
+- [x] 真 ASR 路径跑通（paraformer-zh + fsmn-vad + ct-punc 模型已下载）
+- [ ] 真实即创视频端到端测试（需要用户提供素材）
 - [ ] B-roll 智能匹配（关键词 → 素材），目前是顺序轮询
-- [ ] 字幕样式（字体/位置/动画）目前是默认白字黑边
+- [ ] 字幕样式（字体/位置/动画）目前是默认白字
+
