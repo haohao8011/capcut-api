@@ -38,6 +38,10 @@ outputs/
 *.mp3
 .flac
 
+# 上传文件（Web 服务用）
+uploads/
+downloaded_test.zip
+
 # 用户素材（inputs 目录里放素材，但具体大文件不入库）
 inputs/broll/
 inputs/*.mp4

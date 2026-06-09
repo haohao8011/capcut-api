@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>capcut-draft · 数字人 → 剪映草稿</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 980px; margin: 24px auto; padding: 0 16px; color: #222; background: #f7f7f9; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 24px; }
+  .card { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  .drop { border: 2px dashed #c4c8d0; border-radius: 6px; padding: 18px; text-align: center;
+          color: #666; cursor: pointer; transition: all .2s; }
+  .drop.drag, .drop:hover { border-color: #4a90e2; background: #f0f7ff; color: #4a90e2; }
+  .drop input { display: none; }
+  .file-list { margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; color: #444; }
+  .file-list li { padding: 4px 8px; background: #f0f2f5; border-radius: 4px; margin: 3px 0;
+                  display: flex; justify-content: space-between; align-items: center; }
+  .file-list .x { color: #c00; cursor: pointer; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  label { font-size: 13px; color: #555; }
+  input[type=text], input[type=number] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; width: 80px; }
+  button { background: #4a90e2; color: #fff; border: none; border-radius: 4px; padding: 8px 16px;
+           cursor: pointer; font-size: 14px; }
+  button:hover { background: #3a7bc8; }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  button.secondary { background: #fff; color: #4a90e2; border: 1px solid #4a90e2; }
+  .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 16px; }
+  .opts > div { display: flex; justify-content: space-between; align-items: center; }
+  .job { border: 1px solid #e0e2e6; border-radius: 6px; padding: 10px 14px; margin: 8px 0;
+         background: #fff; }
+  .job .head { display: flex; justify-content: space-between; align-items: center; }
+  .job .name { font-weight: 500; }
+  .status { font-size: 12px; padding: 2px 8px; border-radius: 10px; color: #fff; }
+  .status.queued  { background: #888; }
+  .status.running { background: #f0a020; }
+  .status.success { background: #4caf50; }
+  .status.failed  { background: #e53935; }
+  .job .meta { font-size: 12px; color: #888; margin-top: 4px; }
+  .progress { font-size: 12px; color: #555; background: #f5f5f7; padding: 6px 8px;
+              border-radius: 4px; max-height: 120px; overflow: auto; margin-top: 6px;
+              font-family: ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+  .job .actions { margin-top: 6px; display: flex; gap: 8px; }
+  .toast { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border-radius: 4px;
+           color: #fff; font-size: 13px; opacity: 0; transition: opacity .3s; z-index: 1000; }
+  .toast.show { opacity: 1; }
+  .toast.info { background: #4a90e2; }
+  .toast.error { background: #e53935; }
+</style>
+</head>
+<body>
+<h1>capcut-draft</h1>
+<div class="sub">数字人视频 + B-roll + ASR 字幕 → 剪映草稿（API 文档：<a href="/docs" target="_blank">/docs</a>）</div>
+
+<div class="card">
+  <h2>1. 上传数字人主视频</h2>
+  <label class="drop" id="drop-main">
+    <input type="file" id="file-main" accept="video/*">
+    点击或拖入视频文件（mp4 / mov / mkv / avi / webm）
+  </label>
+  <ul class="file-list" id="list-main"></ul>
+</div>
+
+<div class="card">
+  <h2>2. 上传 B-roll 素材（可多个）</h2>
+  <label class="drop" id="drop-broll">
+    <input type="file" id="file-broll" accept="video/*" multiple>
+    点击或拖入多个视频文件
+  </label>
+  <ul class="file-list" id="list-broll"></ul>
+</div>
+
+<div class="card">
+  <h2>3. 任务选项</h2>
+  <div class="opts">
+    <div><label>草稿名</label><input type="text" id="opt-name" value="AI合成"></div>
+    <div><label>停顿阈值 (秒)</label><input type="number" id="opt-pause" value="0.6" step="0.1"></div>
+    <div><label>最小切点间隔 (秒)</label><input type="number" id="opt-mincut" value="2.5" step="0.1"></div>
+    <div><label>最多切点数</label><input type="number" id="opt-maxcuts" placeholder="不限"></div>
+    <div><label>B-roll 停留 (秒)</label><input type="number" id="opt-brolldur" value="2.5" step="0.1"></div>
+    <div><label>画布宽×高</label>
+      <span><input type="number" id="opt-w" value="1080" style="width:60px"> ×
+            <input type="number" id="opt-h" value="1920" style="width:60px"></span></div>
+    <div><label>FPS</label><input type="number" id="opt-fps" value="30"></div>
+    <div><label>写字幕</label><input type="checkbox" id="opt-subs" checked></div>
+    <div><label>跳过 ASR</label><input type="checkbox" id="opt-skipasr"></div>
+  </div>
+  <div style="margin-top:12px">
+    <button id="btn-start" disabled>开始处理</button>
+    <span id="status" style="margin-left:12px;color:#666;font-size:13px"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>任务列表 <button class="secondary" id="btn-refresh" style="float:right;padding:4px 10px;font-size:12px">刷新</button></h2>
+  <div id="jobs"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const toast = (msg, type='info') => {
+  const t = $('toast'); t.textContent = msg; t.className = `toast show ${type}`;
+  setTimeout(() => t.className = 'toast', 2400);
+};
+
+let mainFileIds = [];
+let brollFileIds = [];
+
+// 上传 main
+async function uploadOne(file) {
+  const fd = new FormData(); fd.append('file', file);
+  const r = await fetch('/api/upload-main', {method:'POST', body: fd});
+  if (!r.ok) throw new Error('上传失败');
+  return (await r.json()).file_id;
+}
+async function uploadMany(files) {
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  const r = await fetch('/api/upload-broll', {method:'POST', body: fd});
+  if (!r.ok) throw new Error('上传失败');
+  return (await r.json()).file_ids;
+}
+
+function refreshLists() {
+  $('list-main').innerHTML = mainFileIds.length === 0
+    ? '' : mainFileIds.map((id, i) => `<li>主视频 #${i+1}: <code>${id}</code></li>`).join('');
+  $('list-broll').innerHTML = brollFileIds.length === 0
+    ? '' : brollFileIds.map((id, i) => `<li>B-roll #${i+1}: <code>${id}</code></li>`).join('');
+  $('btn-start').disabled = !(mainFileIds.length && brollFileIds.length);
+}
+
+function bindDrop(zoneId, inputId, handler) {
+  const zone = $(zoneId), input = $(inputId);
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => { for (const f of e.target.files) handler(f); input.value=''; });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag');
+    for (const f of e.dataTransfer.files) handler(f);
+  });
+}
+
+bindDrop('drop-main', 'file-main', async (f) => {
+  try { mainFileIds.push(await uploadOne(f)); refreshLists(); }
+  catch (e) { toast(e.message, 'error'); }
+});
+bindDrop('drop-broll', 'file-broll', async (f) => {
+  try { const id = await uploadOne(f); brollFileIds.push(id); refreshLists(); }
+  catch (e) { toast(e.message, 'error'); }
+});
+
+// 启动任务
+$('btn-start').addEventListener('click', async () => {
+  $('btn-start').disabled = true;
+  $('status').textContent = '提交任务中...';
+  const body = {
+    name: $('opt-name').value || 'AI合成',
+    main_file_id: mainFileIds[0],
+    broll_file_ids: brollFileIds,
+    options: {
+      pause_threshold: parseFloat($('opt-pause').value),
+      min_cut_interval: parseFloat($('opt-mincut').value),
+      max_cuts: $('opt-maxcuts').value ? parseInt($('opt-maxcuts').value) : null,
+      broll_duration: parseFloat($('opt-brolldur').value),
+      width: parseInt($('opt-w').value),
+      height: parseInt($('opt-h').value),
+      fps: parseFloat($('opt-fps').value),
+      add_subtitles: $('opt-subs').checked,
+      skip_asr: $('opt-skipasr').checked,
+    }
+  };
+  try {
+    const r = await fetch('/api/jobs', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!r.ok) throw new Error((await r.json()).detail || '提交失败');
+    const j = await r.json();
+    toast(`任务已创建: ${j.job_id}`);
+    $('status').textContent = '处理中...';
+    refreshJobs();
+  } catch (e) { toast(e.message, 'error'); }
+  $('btn-start').disabled = false;
+});
+
+async function refreshJobs() {
+  const r = await fetch('/api/jobs');
+  const data = await r.json();
+  const html = data.jobs.length === 0
+    ? '<div style="color:#888;font-size:13px">暂无任务</div>'
+    : data.jobs.map(j => jobHtml(j)).join('');
+  $('jobs').innerHTML = html;
+  bindJobActions();
+}
+
+function jobHtml(j) {
+  return `<div class="job" id="job-${j.id}">
+    <div class="head">
+      <span class="name">${j.name} <small style="color:#888">(${j.id})</small></span>
+      <span class="status ${j.status}">${j.status}</span>
+    </div>
+    <div class="meta">主: ${j.main_file} · B-roll: ${j.broll_count} 个</div>
+    <div class="progress" id="prog-${j.id}"></div>
+    <div class="actions">
+      ${j.status === 'success' ? `<a href="/api/jobs/${j.id}/download"><button class="secondary">下载草稿</button></a>` : ''}
+      <button class="secondary" data-act="refresh" data-id="${j.id}">刷新进度</button>
+      <button class="secondary" data-act="del" data-id="${j.id}">删除</button>
+    </div>
+  </div>`;
+}
+
+function bindJobActions() {
+  document.querySelectorAll('[data-act=refresh]').forEach(btn =>
+    btn.addEventListener('click', () => loadJobDetail(btn.dataset.id)));
+  document.querySelectorAll('[data-act=del]').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('确认删除？')) return;
+      await fetch('/api/jobs/' + btn.dataset.id, {method: 'DELETE'});
+      refreshJobs();
+    }));
+}
+
+async function loadJobDetail(id) {
+  const r = await fetch('/api/jobs/' + id);
+  const j = await r.json();
+  const el = $(`prog-${id}`); if (el) el.textContent = (j.progress || []).join('\n') || '(无日志)';
+  // 状态变化就刷新列表
+  if (j.status === 'success' || j.status === 'failed') refreshJobs();
+}
+
+$('btn-refresh').addEventListener('click', refreshJobs);
+
+// 轮询
+setInterval(refreshJobs, 5000);
+refreshJobs();
+</script>
+</body>
+</html>
