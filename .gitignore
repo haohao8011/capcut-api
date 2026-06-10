@@ -31,6 +31,13 @@ env/
 server.log
 wait_port.ps1
 
+# 浏览器临时 profile（截图脚本会生成）
+screenshots/.edge_profile_*/
+
+# Python 字节码（编辑器有时会扫到）
+__pycache__/
+*.py[cod]
+
 # 业务
 # 草稿和临时文件都不进 git
 outputs/
