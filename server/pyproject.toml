@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capcut-draft-server"
+version = "0.2.0"
+description = "capcut-draft 服务端：FastAPI + 鉴权 + 任务调度 + 清理"
+readme = "../../../README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "小马" }]
+
+dependencies = [
+    # 共享核心（ASR / 草稿）
+    "capcut-draft-core>=0.2.0",
+    # 服务端专属
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.9",
+    "sqlalchemy>=2.0.0",
+    "bcrypt>=4.0.0",
+    "pyjwt>=2.8.0",
+    "httpx>=0.27.0",         # 服务端任务回调客户端
+    "pydantic>=2.0",
+    "requests>=2.31",
+    "gunicorn>=21.0",
+    "psycopg2-binary>=2.9; platform_system != 'Windows'",  # PG 可选
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+capcut-server = "capcut_draft_server.web:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"capcut_draft_server" = ["static/*.html", "static/*/*.html"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

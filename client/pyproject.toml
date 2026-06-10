@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capcut-draft-client"
+version = "0.2.0"
+description = "capcut-draft 客户端：本地 worker（ASR + 草稿）+ 极简 UI（127.0.0.1:8001）"
+readme = "../../../README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "小马" }]
+
+dependencies = [
+    # 共享核心（ASR / 草稿）— 这是真正干活的部分
+    "capcut-draft-core>=0.2.0",
+    # 客户端 HTTP + 配置
+    "httpx>=0.27.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    # 本地 UI
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+capcut-client = "capcut_draft_client.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"capcut_draft_client" = ["static/*.html"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
