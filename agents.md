@@ -57,6 +57,9 @@ capcut-api/
 ├── uploads/                      # Web 端上传的临时文件（git 忽略）
 ├── screenshots/                  # 截图存这里（git 忽略 .edge_profile_*）
 │   └── *.png                     # 4 张 UI 截图
+├── config/                       # ★ 工作流持久化（用户部分 git 忽略）
+│   ├── workflows.builtin.json    # 6 个内置工作流（git 跟踪）
+│   └── workflows.user.json       # 用户保存的工作流（git 忽略，本地）
 ├── src/capcut_draft/             # 源码包
 │   ├── models.py                 # 切点 / 字幕数据类
 │   ├── asr.py                    # funasr 调用
@@ -69,6 +72,7 @@ capcut-api/
 │   ├── web_smoke.py              # 端到端 API 验证
 │   ├── ui_check.py               # UI 元素 + 端到端
 │   ├── workflow_check.py         # 6 个工作流验证
+│   ├── wf_api_check.py           # 工作流 API（列表/保存/删除）验证
 │   └── shoot.py                  # Edge headless 截图脚本
 ├── .venv/                        # 虚拟环境
 ├── .gitignore
@@ -108,6 +112,9 @@ capcut-api/
 | `/api/jobs/{id}` | GET | 任务详情（含完整 progress 日志） |
 | `/api/jobs/{id}/download` | GET | 打包 zip 流回 |
 | `/api/jobs/{id}` | DELETE | 删除任务 + 草稿 + zip |
+| `/api/workflows` | GET | 列出全部工作流（内置 + 用户） |
+| `/api/workflows` | POST | 把当前参数保存为用户工作流（id 自动生成 `u_xxx`） |
+| `/api/workflows/{id}` | DELETE | 删除用户工作流（内置不可删，会 400） |
 | `/docs` | GET | Swagger UI |
 
 ## UI 设计
@@ -117,6 +124,7 @@ capcut-api/
 - **字体**：JetBrains Mono（数字/标签）+ Noto Sans SC（中文）
 - **布局**：左列 4 步（上传/上传/参数/任务），右列 04 任务，窄屏堆叠
 - **6 个工作流预设**：🚀 带货口播 / 📚 知识分享 / 🎬 Vlog 故事 / 🎯 极简字幕 / ⚡ 快测预览 / 🤖 TTS / 数字人
+- **工作流存储**：内置 6 个写在 `config/workflows.builtin.json`（git 跟踪），用户在 UI 里"+ 保存当前参数为新工作流"会落到 `config/workflows.user.json`（git 忽略）；用户工作流右上角 hover 出 × 可删
 - **核心 bug 已修**：broll 上传路由、删除按钮渲染、label/input 关联、a/button 嵌套、polling 智能启停、toast 堆叠、failed 任务"重新提交"按钮
 
 ## 已知问题 / 进度
@@ -133,6 +141,8 @@ capcut-api/
 - [x] /favicon.ico 端点（程序生成 16x16 青色 C）
 - [x] 关掉 ANSI 颜色码（start.bat 设 `NO_COLOR=1`）让 cmd 窗口日志干净
 - [x] 临时垃圾清理（`.edge_profile_*` 72.94 MB / `__pycache__` / 一次性脚本）
+- [x] 工作流外置到 `config/*.json`（内置 6 个 git 跟踪，用户保存的 git 忽略）
+- [x] 用户工作流保存 / 删除 API（`/api/workflows` GET/POST/DELETE）
 
 ### 未做 / 待办
 - [ ] 真实即创视频端到端测试（需要用户提供素材）

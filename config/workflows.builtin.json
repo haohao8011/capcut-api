@@ -1,0 +1,121 @@
+[
+  {
+    "id": "ecom",
+    "name": "带货口播",
+    "icon": "🚀",
+    "description": "快节奏，无字幕",
+    "tags": [
+      "1.5s 切",
+      "1.8s B-roll",
+      "无字幕"
+    ],
+    "builtin": true,
+    "options": {
+      "pause_threshold": 0.5,
+      "min_cut_interval": 1.5,
+      "max_cuts": null,
+      "broll_duration": 1.8,
+      "add_subtitles": false,
+      "skip_asr": false
+    }
+  },
+  {
+    "id": "knowledge",
+    "name": "知识分享",
+    "icon": "📚",
+    "description": "中速 + 字幕",
+    "tags": [
+      "3.0s 切",
+      "2.5s B-roll",
+      "有字幕"
+    ],
+    "builtin": true,
+    "options": {
+      "pause_threshold": 0.8,
+      "min_cut_interval": 3.0,
+      "max_cuts": null,
+      "broll_duration": 2.5,
+      "add_subtitles": true,
+      "skip_asr": false
+    }
+  },
+  {
+    "id": "vlog",
+    "name": "Vlog 故事",
+    "icon": "🎬",
+    "description": "慢节奏，沉浸感",
+    "tags": [
+      "5.0s 切",
+      "3.5s B-roll",
+      "有字幕"
+    ],
+    "builtin": true,
+    "options": {
+      "pause_threshold": 1.0,
+      "min_cut_interval": 5.0,
+      "max_cuts": null,
+      "broll_duration": 3.5,
+      "add_subtitles": true,
+      "skip_asr": false
+    }
+  },
+  {
+    "id": "clean",
+    "name": "极简字幕",
+    "icon": "🎯",
+    "description": "慢 + 字幕 ON",
+    "tags": [
+      "4.0s 切",
+      "2.0s B-roll",
+      "有字幕"
+    ],
+    "builtin": true,
+    "options": {
+      "pause_threshold": 1.0,
+      "min_cut_interval": 4.0,
+      "max_cuts": null,
+      "broll_duration": 2.0,
+      "add_subtitles": true,
+      "skip_asr": false
+    }
+  },
+  {
+    "id": "quick",
+    "name": "快测预览",
+    "icon": "⚡",
+    "description": "跳过 ASR，6s 固定切",
+    "tags": [
+      "跳过 ASR",
+      "不超 10 切"
+    ],
+    "builtin": true,
+    "options": {
+      "pause_threshold": 0.6,
+      "min_cut_interval": 6.0,
+      "max_cuts": 10,
+      "broll_duration": 2.5,
+      "add_subtitles": false,
+      "skip_asr": true
+    }
+  },
+  {
+    "id": "tts",
+    "name": "TTS / 数字人",
+    "icon": "🤖",
+    "description": "机械节奏，切点密",
+    "tags": [
+      "0.4s 停顿",
+      "1.2s 切",
+      "1.5s B-roll"
+    ],
+    "builtin": true,
+    "options": {
+      "pause_threshold": 0.4,
+      "min_cut_interval": 1.2,
+      "max_cuts": null,
+      "broll_duration": 1.5,
+      "add_subtitles": true,
+      "skip_asr": false
+    }
+  }
+]

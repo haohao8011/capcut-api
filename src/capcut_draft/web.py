@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import threading
@@ -43,9 +44,15 @@ MAIN_DIR = UPLOAD_DIR / "main"
 BROLL_DIR = UPLOAD_DIR / "broll"
 OUTPUT_DIR = ROOT / "outputs"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+CONFIG_DIR = ROOT / "config"
+BUILTIN_WF_FILE = CONFIG_DIR / "workflows.builtin.json"
+USER_WF_FILE = CONFIG_DIR / "workflows.user.json"
 
-for d in (MAIN_DIR, BROLL_DIR, OUTPUT_DIR):
+for d in (MAIN_DIR, BROLL_DIR, OUTPUT_DIR, CONFIG_DIR):
     d.mkdir(parents=True, exist_ok=True)
+# 用户工作流文件不存在时建空数组
+if not USER_WF_FILE.exists():
+    USER_WF_FILE.write_text("[]\n", encoding="utf-8")
 
 
 # -------- 数据模型 --------
@@ -120,6 +127,113 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 def index() -> HTMLResponse:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
+
+
+# -------- 工作流管理 --------
+
+def _load_json(path: Path, default):
+    """读 JSON，文件不存在/损坏时返回 default 并打 log。"""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        log.warning("workflow load failed: %s (%s)", path, e)
+        return default
+
+
+def _save_json(path: Path, data) -> None:
+    """原子写 JSON（先写 .tmp 再 rename，防中途崩溃损坏）。"""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _list_workflows() -> list[dict]:
+    builtin = _load_json(BUILTIN_WF_FILE, [])
+    user = _load_json(USER_WF_FILE, [])
+    # 防止用户在 user 里手贱加 builtin=True / id 冲突
+    for w in builtin:
+        w.setdefault("builtin", True)
+    for w in user:
+        w["builtin"] = False
+    return builtin + user
+
+
+def _validate_wf_options(options: dict) -> dict:
+    """裁掉无效 key，转换类型。"""
+    out: dict = {}
+    schema = {
+        "pause_threshold": (float, 0.6),
+        "min_cut_interval": (float, 2.5),
+        "max_cuts": (int, None),
+        "broll_duration": (float, 2.5),
+        "add_subtitles": (bool, True),
+        "skip_asr": (bool, False),
+    }
+    for k, (typ, default) in schema.items():
+        if k not in options:
+            out[k] = default
+            continue
+        v = options[k]
+        if v is None:
+            out[k] = None
+            continue
+        if typ is bool:
+            out[k] = bool(v)
+        elif typ is int:
+            out[k] = int(v)
+        else:
+            out[k] = float(v)
+    return out
+
+
+@app.get("/api/workflows")
+def list_workflows() -> dict:
+    """返回全部工作流：内置 + 用户。"""
+    return {"workflows": _list_workflows()}
+
+
+class SaveWorkflowReq(BaseModel):
+    name: str
+    icon: str = "📌"
+    description: str = ""
+    tags: list[str] = []
+    options: dict
+
+
+@app.post("/api/workflows", status_code=201)
+def save_user_workflow(req: SaveWorkflowReq) -> dict:
+    """保存当前参数为用户工作流。id 自动生成。"""
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(400, "name 不能为空")
+    if len(name) > 32:
+        raise HTTPException(400, "name 太长（>32）")
+    wf = {
+        "id": "u_" + uuid.uuid4().hex[:10],
+        "name": name,
+        "icon": req.icon or "📌",
+        "description": req.description or "",
+        "tags": [str(t)[:16] for t in (req.tags or [])][:6],
+        "builtin": False,
+        "options": _validate_wf_options(req.options),
+    }
+    user = _load_json(USER_WF_FILE, [])
+    user.append(wf)
+    _save_json(USER_WF_FILE, user)
+    return wf
+
+
+@app.delete("/api/workflows/{wf_id}")
+def delete_user_workflow(wf_id: str) -> dict:
+    """删除用户工作流。内置的不能删。"""
+    if not wf_id.startswith("u_"):
+        raise HTTPException(400, "只能删除用户工作流（id 必须以 u_ 开头）")
+    user = _load_json(USER_WF_FILE, [])
+    kept = [w for w in user if w["id"] != wf_id]
+    if len(kept) == len(user):
+        raise HTTPException(404, f"工作流不存在: {wf_id}")
+    _save_json(USER_WF_FILE, kept)
+    return {"deleted": wf_id, "remaining": len(kept)}
 
 
 # 用 PIL 生成一张 16x16 青色 "C" 图标。装了 funasr / pyJianYingDraft 基本会顺带把
