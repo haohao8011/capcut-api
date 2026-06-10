@@ -64,7 +64,13 @@ for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%PORT% " ^| findstr LISTENI
 )
 
 REM start in background
+REM NO_COLOR=1 关掉 ANSI 颜色码（cmd 默认不解释，会打成方块）
+REM PYTHONIOENCODING=utf-8 强制 UTF-8 输出，避免中文/emoji 乱码
+REM PYTHONUNBUFFERED=1 让 print/日志立刻刷出来，不缓冲
 set PYTHONPATH=src
+set NO_COLOR=1
+set PYTHONIOENCODING=utf-8
+set PYTHONUNBUFFERED=1
 start "capcut-draft" /MIN "%PY%" -m uvicorn capcut_draft.web:app --host 0.0.0.0 --port %PORT% 1>"%LOG_FILE%" 2>&1
 
 REM --- 4. wait ---

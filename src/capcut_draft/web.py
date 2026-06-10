@@ -28,7 +28,7 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -120,6 +120,41 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 def index() -> HTMLResponse:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
+
+
+# 用 PIL 生成一张 16x16 青色 "C" 图标。装了 funasr / pyJianYingDraft 基本会顺带把
+# Pillow 拉进来；如果实在没装，fallback 到 1x1 透明 PNG。
+def _make_favicon_png() -> bytes:
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        # 1x1 透明 PNG（最少 67 字节）
+        import base64 as _b64
+        return _b64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4"
+            "2mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
+        )
+    img = Image.new("RGBA", (16, 16), (10, 11, 14, 255))  # --bg-0
+    d = ImageDraw.Draw(img)
+    # 画一个青色环 + 中心镂空，做成 "C" 形
+    cyan = (0, 212, 255, 255)
+    # 圆环
+    d.ellipse((1, 1, 14, 14), outline=cyan, width=3)
+    # 抹掉右侧一小段，做成 C
+    d.rectangle((9, 5, 15, 11), fill=(10, 11, 14, 255))
+    import io
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+_FAVICON_PNG = _make_favicon_png()
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    """给浏览器标签一个青色 C 图标，免得日志里 404。"""
+    return Response(content=_FAVICON_PNG, media_type="image/png")
 
 
 # -------- 上传接口 --------
