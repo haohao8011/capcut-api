@@ -89,6 +89,10 @@
     background: rgba(0,212,255,.12); border-radius: 4px;
     padding: 2px 8px; font-size: 12px; margin-right: 10px;
   }
+  .card-head .num.star {
+    color: #ffd86b; background: rgba(255,216,107,.12);
+    font-size: 13px; padding: 1px 8px;
+  }
   .card-head h2 { font-size: 14px; font-weight: 500; margin: 0; letter-spacing: .5px; }
   .card-head .hint { font-size: 11px; color: var(--fg-2); font-family: var(--mono); }
   .card-body { padding: 18px; }
@@ -130,6 +134,50 @@
   }
   .file-list .x:hover { color: var(--danger); background: rgba(255,77,109,.1); }
   .file-list .empty { color: var(--fg-3); font-size: 12px; padding: 4px 0; }
+
+  /* ===== workflows ===== */
+  .workflows {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 10px;
+  }
+  .wf {
+    text-align: left; cursor: pointer; padding: 12px 14px;
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: var(--r-md); color: var(--fg-0);
+    transition: all .15s; font-family: var(--sans);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .wf:hover { border-color: var(--accent); background: var(--bg-3); transform: translateY(-1px); }
+  .wf:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,212,255,.25); }
+  .wf .wf-head { display: flex; align-items: center; gap: 8px; }
+  .wf .wf-icon { font-size: 18px; line-height: 1; }
+  .wf .wf-name { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
+  .wf .wf-desc { font-size: 11px; color: var(--fg-2); }
+  .wf .wf-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .wf .wf-tag {
+    font-family: var(--mono); font-size: 10px; color: var(--fg-1);
+    background: var(--bg-0); border: 1px solid var(--line);
+    padding: 2px 6px; border-radius: 3px;
+  }
+  .wf.active {
+    background: linear-gradient(135deg, rgba(0,212,255,.18) 0%, rgba(0,212,255,.06) 100%);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 0 16px rgba(0,212,255,.2);
+  }
+  .wf.active .wf-name { color: var(--accent); }
+  .wf.active::after {
+    content: "✓"; position: absolute; top: 6px; right: 8px;
+    color: var(--accent); font-family: var(--mono); font-size: 12px; font-weight: 700;
+  }
+  .wf { position: relative; }
+  .wf-clear {
+    margin-top: 10px; text-align: center;
+    font-family: var(--mono); font-size: 11px; color: var(--fg-2);
+    cursor: pointer; padding: 4px;
+  }
+  .wf-clear:hover { color: var(--fg-0); }
+  .wf-clear:empty { display: none; }
 
   /* ===== form ===== */
   .opt-group { margin-bottom: 18px; }
@@ -319,6 +367,75 @@
   <div class="grid">
     <!-- ===== 左列：上传 + 配置 ===== -->
     <div>
+      <!-- Step 0: 快捷工作流 -->
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <span class="num star">★</span>
+            <h2>快捷工作流</h2>
+          </div>
+          <span class="hint">点一下套用 · 可继续微调</span>
+        </div>
+        <div class="card-body">
+          <div class="workflows" id="workflows">
+            <button class="wf" data-wf="ecom" type="button">
+              <div class="wf-head"><span class="wf-icon">🚀</span><span class="wf-name">带货口播</span></div>
+              <div class="wf-desc">快节奏 · 无字幕</div>
+              <div class="wf-tags">
+                <span class="wf-tag">1.5s 切</span>
+                <span class="wf-tag">1.8s B-roll</span>
+                <span class="wf-tag">无字幕</span>
+              </div>
+            </button>
+            <button class="wf" data-wf="knowledge" type="button">
+              <div class="wf-head"><span class="wf-icon">📚</span><span class="wf-name">知识分享</span></div>
+              <div class="wf-desc">中速 + 字幕</div>
+              <div class="wf-tags">
+                <span class="wf-tag">3.0s 切</span>
+                <span class="wf-tag">2.5s B-roll</span>
+                <span class="wf-tag">有字幕</span>
+              </div>
+            </button>
+            <button class="wf" data-wf="vlog" type="button">
+              <div class="wf-head"><span class="wf-icon">🎬</span><span class="wf-name">Vlog 故事</span></div>
+              <div class="wf-desc">慢节奏 · 沉浸感</div>
+              <div class="wf-tags">
+                <span class="wf-tag">5.0s 切</span>
+                <span class="wf-tag">3.5s B-roll</span>
+                <span class="wf-tag">有字幕</span>
+              </div>
+            </button>
+            <button class="wf" data-wf="clean" type="button">
+              <div class="wf-head"><span class="wf-icon">🎯</span><span class="wf-name">极简字幕</span></div>
+              <div class="wf-desc">慢 + 字幕 ON</div>
+              <div class="wf-tags">
+                <span class="wf-tag">4.0s 切</span>
+                <span class="wf-tag">2.0s B-roll</span>
+                <span class="wf-tag">有字幕</span>
+              </div>
+            </button>
+            <button class="wf" data-wf="quick" type="button">
+              <div class="wf-head"><span class="wf-icon">⚡</span><span class="wf-name">快测预览</span></div>
+              <div class="wf-desc">跳过 ASR · 6s 固定切</div>
+              <div class="wf-tags">
+                <span class="wf-tag">跳过 ASR</span>
+                <span class="wf-tag">不超 10 切</span>
+              </div>
+            </button>
+            <button class="wf" data-wf="tts" type="button">
+              <div class="wf-head"><span class="wf-icon">🤖</span><span class="wf-name">TTS / 数字人</span></div>
+              <div class="wf-desc">机械节奏 · 切点密</div>
+              <div class="wf-tags">
+                <span class="wf-tag">0.4s 停顿</span>
+                <span class="wf-tag">1.2s 切</span>
+                <span class="wf-tag">1.5s B-roll</span>
+              </div>
+            </button>
+          </div>
+          <div class="wf-clear" id="wf-clear" hidden>× 清除已选工作流</div>
+        </div>
+      </section>
+
       <!-- Step 1: 主视频 -->
       <section class="card">
         <div class="card-head">
@@ -515,7 +632,123 @@ function basename(path) {
   return m ? m[0] : path;
 }
 
-// ============== uploads ==============
+// ============== workflows ==============
+// 每个工作流是"参数预设"，点击后套用到底下的选项；用户改任意值后高亮自动消失。
+const WORKFLOWS = {
+  ecom: {
+    name: '带货口播',
+    options: {
+      pause_threshold: 0.5, min_cut_interval: 1.5, max_cuts: null,
+      broll_duration: 1.8, add_subtitles: false, skip_asr: false,
+    },
+  },
+  knowledge: {
+    name: '知识分享',
+    options: {
+      pause_threshold: 0.8, min_cut_interval: 3.0, max_cuts: null,
+      broll_duration: 2.5, add_subtitles: true, skip_asr: false,
+    },
+  },
+  vlog: {
+    name: 'Vlog 故事',
+    options: {
+      pause_threshold: 1.0, min_cut_interval: 5.0, max_cuts: null,
+      broll_duration: 3.5, add_subtitles: true, skip_asr: false,
+    },
+  },
+  clean: {
+    name: '极简字幕',
+    options: {
+      pause_threshold: 1.0, min_cut_interval: 4.0, max_cuts: null,
+      broll_duration: 2.0, add_subtitles: true, skip_asr: false,
+    },
+  },
+  quick: {
+    name: '快测预览',
+    options: {
+      pause_threshold: 0.6, min_cut_interval: 6.0, max_cuts: 10,
+      broll_duration: 2.5, add_subtitles: false, skip_asr: true,
+    },
+  },
+  tts: {
+    name: 'TTS / 数字人',
+    options: {
+      pause_threshold: 0.4, min_cut_interval: 1.2, max_cuts: null,
+      broll_duration: 1.5, add_subtitles: true, skip_asr: false,
+    },
+  },
+};
+
+const PARAM_INPUT = {
+  pause_threshold: 'opt-pause',
+  min_cut_interval: 'opt-mincut',
+  max_cuts: 'opt-maxcuts',
+  broll_duration: 'opt-brolldur',
+  add_subtitles: 'opt-subs',
+  skip_asr: 'opt-skipasr',
+};
+
+const PARAM_DEFAULT = {
+  pause_threshold: 0.6, min_cut_interval: 2.5, max_cuts: null,
+  broll_duration: 2.5, add_subtitles: true, skip_asr: false,
+};
+
+let activeWorkflow = null;  // id of currently applied workflow
+
+function applyWorkflow(id) {
+  const wf = WORKFLOWS[id];
+  if (!wf) return;
+  for (const [key, val] of Object.entries(wf.options)) {
+    const inputId = PARAM_INPUT[key];
+    if (!inputId) continue;
+    const el = $('#' + inputId);
+    if (!el) continue;
+    if (el.type === 'checkbox') el.checked = !!val;
+    else el.value = (val === null || val === undefined) ? '' : val;
+  }
+  activeWorkflow = id;
+  $$('.wf').forEach(b => b.classList.toggle('active', b.dataset.wf === id));
+  $('#wf-clear').hidden = false;
+  toast(`已套用「${wf.name}」`, 'success');
+}
+
+function clearWorkflow() {
+  activeWorkflow = null;
+  for (const [key, val] of Object.entries(PARAM_DEFAULT)) {
+    const inputId = PARAM_INPUT[key];
+    if (!inputId) continue;
+    const el = $('#' + inputId);
+    if (!el) continue;
+    if (el.type === 'checkbox') el.checked = !!val;
+    else el.value = (val === null || val === undefined) ? '' : val;
+  }
+  $$('.wf').forEach(b => b.classList.remove('active'));
+  $('#wf-clear').hidden = true;
+  toast('已清除，回到默认参数', 'info');
+}
+
+$('#workflows').addEventListener('click', (e) => {
+  const btn = e.target.closest('.wf');
+  if (!btn) return;
+  applyWorkflow(btn.dataset.wf);
+});
+$('#wf-clear').addEventListener('click', clearWorkflow);
+
+// 用户手动改任意参数 → 取消工作流高亮
+['opt-pause', 'opt-mincut', 'opt-maxcuts', 'opt-brolldur', 'opt-subs', 'opt-skipasr'].forEach(id => {
+  const el = $('#' + id);
+  if (!el) return;
+  const evt = el.type === 'checkbox' ? 'change' : 'input';
+  el.addEventListener(evt, () => {
+    if (activeWorkflow) {
+      activeWorkflow = null;
+      $$('.wf').forEach(b => b.classList.remove('active'));
+      $('#wf-clear').hidden = true;
+    }
+  });
+});
+
+
 async function uploadFile(file, kind) {
   // kind: 'main' | 'broll'
   const url = kind === 'main' ? '/api/upload-main' : '/api/upload-broll';
