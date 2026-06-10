@@ -1,8 +1,10 @@
-"""客户端后台 worker：心跳 + 扫盘上报 + 任务轮询。
+"""客户端后台 worker：心跳 + 扫盘上报 + 任务轮询 + 草稿上传云端。
 
 设计原则（重要）：
-- **本地不传任何文件二进制到云端**：上报的只是 path/size/mtime 等元数据
-- **云端不缓存素材内容**：Task 表里 main_asset / broll_assets 都只是 path 引用
+- **本地不传素材二进制到云端**：上报的只是 path/size/mtime 等元数据
+- **草稿 .zip 上传到云端**：任务跑完 → 打包 .draft 目录 → 上传到 `/api/drafts/upload`
+  - quota 超限不自动删，让用户自己去 Web 后台清理
+  - 上传失败 3 次重试（指数退避），仍失败则写本地重传队列（`~/.capcut-draft/pending_uploads/`）
 - 任务执行完全在本地：读 main 视频 → ASR → 切点 → 草稿，全程在 `cfg.worker.output_dir` 下
 - 报给云端的 progress / result_path / error **不包含完整路径信息**（只到目录级别）
 """
@@ -10,15 +12,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 import socket
 import threading
 import time
 import traceback
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .. import cli as cli_mod
+from capcut_draft_core import cli as cli_mod
 from .api import ServerAPI
 from .config import ClientConfig
 from .storage import scan_and_upload
@@ -41,6 +45,8 @@ class Worker:
         self._stats = {
             "tasks_done": 0,
             "tasks_failed": 0,
+            "drafts_uploaded": 0,
+            "drafts_upload_failed": 0,
             "started_at": datetime.now(),
         }
 
@@ -219,7 +225,7 @@ class Worker:
                 self.api.progress(tid, pct, safe_msg)
 
             # 7. 跑 _process_one
-            draft_path = cli._process_one(
+            draft_path = cli_mod._process_one(
                 main_path=main_path,
                 brolls=ok_brolls,
                 out_dir=out_dir,
@@ -248,6 +254,14 @@ class Worker:
             log.info("任务 #%d 完成: %s", tid, draft_path)
             self._stats["tasks_done"] += 1
 
+            # 9. 打包 .draft 目录 → 上传到云端
+            self._upload_draft_to_server(
+                task_id=tid,
+                draft_path=Path(draft_path),
+                task_name=t.get("workflow_name") or f"task_{tid}",
+                workflow_name=t.get("workflow_name"),
+            )
+
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
             tb = traceback.format_exc(limit=4)
@@ -265,6 +279,118 @@ class Worker:
         finally:
             self._busy = False
             self._current_task_id = None
+
+    # -------- 草稿打包 + 上传云端 --------
+
+    def _upload_draft_to_server(
+        self,
+        *,
+        task_id: int,
+        draft_path: Path,
+        task_name: str,
+        workflow_name: Optional[str],
+    ) -> None:
+        """任务完成 → 把 .draft 目录 zip → 上传到 /api/drafts/upload。
+
+        - 失败重试 3 次（指数退避：2s/4s/8s）
+        - 彻底失败则把 .zip 搬到 `~/.capcut-draft/pending_uploads/`，下次启动重试
+        - quota 413 错误不重试，直接 log 错误让用户自己删
+        """
+        try:
+            if not draft_path.exists():
+                log.error("[upload] task #%d 草稿目录不存在: %s", task_id, draft_path)
+                return
+
+            # 1. zip
+            zip_path = draft_path.parent / f"{draft_path.name}.zip"
+            log.info("[upload] task #%d 开始打包 %s", task_id, draft_path.name)
+            try:
+                with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_STORED) as zf:
+                    for f in sorted(draft_path.rglob("*")):
+                        if f.is_file():
+                            # arcname 保留 .draft 子目录的相对路径
+                            zf.write(f, f.relative_to(draft_path.parent))
+            except Exception as e:
+                log.exception("[upload] task #%d 打包失败: %s", task_id, e)
+                return
+
+            # 2. 上传（带重试 + 进度回调）
+            sent_bytes = {"n": 0}
+            total_bytes = zip_path.stat().st_size
+
+            def _on_progress(sent: int, total: int) -> None:
+                sent_bytes["n"] = sent
+                # 把上传进度也报给 server（任务进度条 90% → 100% 这一段给上传用）
+                pct = 90 + int(sent / total * 10) if total else 90
+                self.api.progress(
+                    task_id, pct,
+                    message=f"上传草稿 {sent/1024/1024:.1f}/{total/1024/1024:.1f} MB",
+                )
+
+            max_attempts = 3
+            last_err: Optional[str] = None
+            for attempt in range(1, max_attempts + 1):
+                log.info("[upload] task #%d 第 %d/%d 次上传 %s (%.1f MB)",
+                         task_id, attempt, max_attempts, zip_path.name, total_bytes / 1024 / 1024)
+                # 重试前重置进度计数
+                sent_bytes["n"] = 0
+                r = self.api.upload_draft(
+                    zip_path,
+                    task_id=task_id,
+                    task_name=task_name,
+                    workflow_name=workflow_name,
+                    progress_callback=_on_progress,
+                )
+                st = r.get("_status", 0)
+                if st == 200:
+                    log.info("[upload] task #%d ✅ 上传成功，draft id=%s",
+                             task_id, (r.get("draft") or {}).get("id"))
+                    self._stats["drafts_uploaded"] += 1
+                    # 上传成功 → 把 .zip 删掉节省磁盘（草稿 .zip 已在云端，原始 .draft 留着方便本地预览）
+                    try:
+                        zip_path.unlink()
+                    except OSError:
+                        pass
+                    return
+                if st == 413:
+                    # quota 超限 — 不重试，让用户自己删
+                    err = r.get("detail") or "quota 超限"
+                    log.error("[upload] task #%d ❌ quota 超限：%s", task_id, err)
+                    self._stats["drafts_upload_failed"] += 1
+                    # 把 .zip 留到 pending_uploads/，给用户清理 quota 后重传
+                    self._move_to_pending_uploads(zip_path, task_id, reason=f"quota: {err}")
+                    return
+                # 其他错误（网络 5xx、超时）→ 退避重试
+                last_err = r.get("_error") or r.get("detail") or r.get("_text") or f"HTTP {st}"
+                log.warning("[upload] task #%d 第 %d 次失败: %s", task_id, attempt, last_err)
+                if attempt < max_attempts:
+                    backoff = 2 ** attempt
+                    time.sleep(backoff)
+
+            # 3 次都失败
+            log.error("[upload] task #%d ❌ 3 次都失败，最后错误: %s", task_id, last_err)
+            self._stats["drafts_upload_failed"] += 1
+            self._move_to_pending_uploads(zip_path, task_id, reason=last_err or "unknown")
+        except Exception as e:
+            log.exception("[upload] task #%d 异常: %s", task_id, e)
+            self._stats["drafts_upload_failed"] += 1
+
+    def _move_to_pending_uploads(self, zip_path: Path, task_id: int, *, reason: str) -> None:
+        """上传失败的 .zip 搬到 `~/.capcut-draft/pending_uploads/`，下次启动会重传。"""
+        try:
+            config_dir = Path.home() / ".capcut-draft"
+            pend_dir = config_dir / "pending_uploads"
+            pend_dir.mkdir(parents=True, exist_ok=True)
+            dest = pend_dir / f"task{task_id}_{int(time.time())}_{zip_path.name}"
+            shutil.move(str(zip_path), str(dest))
+            # 写个 .meta.json 记原因
+            (dest.parent / (dest.name + ".meta.json")).write_text(
+                f'{{"task_id": {task_id}, "reason": {reason!r}, "ts": "{datetime.now().isoformat()}"}}',
+                encoding="utf-8",
+            )
+            log.info("[upload] .zip 已搬到 %s，等下次启动重传", dest)
+        except Exception as e:
+            log.error("[upload] 搬到 pending_uploads 失败: %s", e)
 
 
 def get_local_hostname() -> str:

@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any, Callable, Optional
 
 import httpx
 
@@ -99,3 +100,98 @@ class ServerAPI:
         """调服务端 /api/clients/wizard/redeem 换 token。返回 dict 含 token（明文）+ client 信息。"""
         return self._req("POST", "/api/clients/wizard/redeem",
                          json={"code": code, "name": name, "hostname": hostname, "version": version})
+
+    # -------- 草稿云端存储 --------
+
+    def upload_draft(
+        self,
+        zip_path: str | Path,
+        *,
+        task_id: Optional[int] = None,
+        task_name: Optional[str] = None,
+        workflow_name: Optional[str] = None,
+        note: Optional[str] = None,
+        chunk_size: int = 256 * 1024,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> dict:
+        """把本地 .zip 草稿流式上传到服务端，命中 quota 时返回 413 错误。
+
+        progress_callback(sent_bytes, total_bytes) — 每读完一块就调一次，UI 可以用它画进度条。
+        """
+        path = Path(zip_path)
+        if not path.is_file():
+            return {"_error": f"草稿文件不存在: {zip_path}", "_status": 0}
+        total = path.stat().st_size
+        if total == 0:
+            return {"_error": f"草稿文件为空: {zip_path}", "_status": 0}
+
+        def _gen():
+            sent = 0
+            with path.open("rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    sent += len(chunk)
+                    if progress_callback:
+                        try:
+                            progress_callback(sent, total)
+                        except Exception as e:  # 进度回调出错不影响上传
+                            log.debug("progress_callback 抛错（忽略）: %s", e)
+                    yield chunk
+
+        files = {"file": (path.name, _gen(), "application/zip")}
+        form = {}
+        if task_id is not None:
+            form["task_id"] = str(task_id)
+        if task_name:
+            form["task_name"] = task_name
+        if workflow_name:
+            form["workflow_name"] = workflow_name
+        if note:
+            form["note"] = note
+        # 上传可能要很久（2GB），单独把超时拉长
+        try:
+            r = self._client.post(
+                f"{self.base_url}/api/drafts/upload",
+                headers=self._headers(),
+                files=files,
+                data=form,
+                timeout=httpx.Timeout(connect=15.0, read=None, write=None, pool=10.0),
+            )
+        except httpx.RequestError as e:
+            log.error("upload_draft 网络错误: %s", e)
+            return {"_error": str(e), "_status": 0}
+        try:
+            data = r.json()
+        except Exception:
+            data = {"_text": r.text}
+        if r.status_code >= 400:
+            log.warning("upload_draft HTTP %d: %s", r.status_code, data)
+        return {**data, "_status": r.status_code} if isinstance(data, dict) else data
+
+    def list_drafts(
+        self,
+        *,
+        q: Optional[str] = None,
+        min_size: Optional[int] = None,
+        max_size: Optional[int] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        sort: str = "created_desc",
+        page: int = 1,
+        page_size: int = 50,
+    ) -> dict:
+        params: dict[str, Any] = {"sort": sort, "page": page, "page_size": page_size}
+        if q: params["q"] = q
+        if min_size is not None: params["min_size"] = min_size
+        if max_size is not None: params["max_size"] = max_size
+        if date_from: params["date_from"] = date_from
+        if date_to: params["date_to"] = date_to
+        return self._req("GET", "/api/drafts", params=params)
+
+    def delete_draft(self, draft_id: int) -> dict:
+        return self._req("DELETE", f"/api/drafts/{draft_id}")
+
+    def get_draft_quota(self) -> dict:
+        return self._req("GET", "/api/drafts/quota")

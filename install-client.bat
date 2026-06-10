@@ -60,10 +60,10 @@ if not exist "%PY%" (
     )
 )
 
-REM --- 3. 装客户端依赖（只装 [client] 套件，不装服务端/gunicorn/etc.） ---
+REM --- 3. 装客户端依赖（只装 common + client 两个子包） ---
 echo       Installing client deps ...
 "%PY%" -m pip install --upgrade pip -q -i https://pypi.tuna.tsinghua.edu.cn/simple
-"%PY%" -m pip install -e .[client] -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+"%PY%" -m pip install -e ./common -e ./client -q -i https://pypi.tuna.tsinghua.edu.cn/simple
 if errorlevel 1 (
     echo [ERROR] pip install 失败
     pause
@@ -81,11 +81,10 @@ echo   准备好后按任意键继续...
 pause >nul
 
 REM --- 4. wizard ---
-set PYTHONPATH=src
 set PYTHONIOENCODING=utf-8
 set PYTHONUNBUFFERED=1
 
-"%PY%" -m capcut_draft.client --wizard
+"%PY%" -m capcut_draft_client --wizard
 if errorlevel 1 (
     echo.
     echo [WARN] wizard 没跑通，可以重试：

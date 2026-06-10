@@ -73,6 +73,9 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(128), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 草稿云端存储 quota（MB）。NULL = 用环境变量默认值；0 = 不限
+    # 由 db_models._migrate_add_columns() 在 init_all_tables 时补列
+    quota_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

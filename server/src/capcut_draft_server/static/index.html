@@ -182,13 +182,15 @@
   </header>
 
   <div class="privacy-banner">
-    🔒 <strong>零缓存原则：</strong>所有数字人视频、B-roll 素材、生成的草稿都<strong>不出员工本机</strong>。
-    云端服务端只存：路径引用 + 文件大小/时长 + 任务状态 + 错误日志。
-    后台每 1h 自动清 7 天前的旧上传/zip、30 天前的旧任务日志、30 天没心跳的客户端标记离线。
+    🔒 <strong>零素材缓存：</strong>数字人视频和 B-roll 素材<strong>不出员工本机</strong>，
+    云端只存路径引用 + 元数据（路径 / 大小 / 时长）。
+    生成的<strong>草稿 .zip 存到云端</strong>（<code class="mono">data/drafts/{owner_id}/</code>），
+    员工从「草稿管理」下载/删除/分享，默认 quota 5GB/人。
   </div>
 
   <div class="tabs">
     <button class="tab active" data-tab="tasks">📋 任务 <span class="badge" id="badge-tasks">0</span></button>
+    <button class="tab" data-tab="drafts">📦 草稿 <span class="badge" id="badge-drafts">0</span></button>
     <button class="tab" data-tab="clients">💻 客户端 <span class="badge" id="badge-clients">0</span></button>
     <button class="tab" data-tab="users" id="tab-users" hidden>👥 用户 <span class="badge" id="badge-users">0</span></button>
   </div>
@@ -230,6 +232,71 @@
             <tr><td colspan="9" class="empty">加载中…</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Tab: Drafts ============ -->
+  <div class="tab-panel" data-panel="drafts">
+    <div class="card">
+      <div class="card-head">
+        <h2>我的草稿（云端）</h2>
+        <div class="row-actions">
+          <span class="hint" id="draft-quota-hint">加载中…</span>
+          <button class="btn secondary small" onclick="refreshDrafts()">🔄 刷新</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <!-- Quota 进度条 -->
+        <div style="margin-bottom: 16px;">
+          <div class="progress-bar" style="height: 8px;"><div id="quota-bar" style="width: 0%; background: var(--accent-3);"></div></div>
+          <div class="small dim" id="quota-text" style="margin-top: 6px; font-family: var(--mono);"></div>
+        </div>
+        <!-- 搜索 + 筛选 -->
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
+          <input type="text" id="draft-q" placeholder="🔍 任务名/文件名" class="btn secondary small" style="text-align: left; min-width: 200px; padding: 6px 10px;">
+          <input type="number" id="draft-min-size" placeholder="最小 KB" min="0" class="btn secondary small" style="text-align: left; width: 110px; padding: 6px 10px;">
+          <input type="number" id="draft-max-size" placeholder="最大 KB" min="0" class="btn secondary small" style="text-align: left; width: 110px; padding: 6px 10px;">
+          <input type="date" id="draft-date-from" class="btn secondary small" style="padding: 6px 10px;">
+          <span class="small dim" style="align-self: center;">~</span>
+          <input type="date" id="draft-date-to" class="btn secondary small" style="padding: 6px 10px;">
+          <select id="draft-sort" class="btn secondary small" style="padding: 4px 10px;">
+            <option value="created_desc">最新优先</option>
+            <option value="created_asc">最旧优先</option>
+            <option value="size_desc">最大优先</option>
+            <option value="size_asc">最小优先</option>
+            <option value="name_asc">名字 A→Z</option>
+          </select>
+          <button class="btn small" onclick="refreshDrafts()">应用</button>
+          <button class="btn secondary small" onclick="clearDraftFilters()">重置</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding: 0">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>文件名</th>
+              <th>任务</th>
+              <th>工作流</th>
+              <th>大小</th>
+              <th>上传时间</th>
+              <th>下载</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="drafts-tbody">
+            <tr><td colspan="8" class="empty">加载中…</td></tr>
+          </tbody>
+        </table>
+        <div id="drafts-pager" style="padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line);">
+          <span class="small dim mono" id="drafts-total">共 0 条</span>
+          <div class="row-actions">
+            <button class="btn secondary small" id="drafts-prev" onclick="draftPage(-1)">‹ 上一页</button>
+            <span class="small mono" id="drafts-page-now">1</span>
+            <button class="btn secondary small" id="drafts-next" onclick="draftPage(1)">下一页 ›</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -321,7 +388,7 @@
     </div>
   </div>
 
-  <div class="foot">capcut-draft · C/S 架构 · 云端不缓存任何文件本体</div>
+  <div class="foot">capcut-draft · C/S 架构 · 草稿 .zip 默认存云端（5GB/人），素材仍在员工本机</div>
 </div>
 
 <!-- ============ Modals ============ -->
@@ -418,6 +485,20 @@
   </div>
 </div>
 
+<!-- 分享草稿 -->
+<div class="modal-bg" id="modal-share">
+  <div class="modal">
+    <h3>🔗 分享草稿</h3>
+    <p>把下面这个链接发给同事，对方点开后点"确认下载"就能拿到 .zip。<br>
+    <span class="dim small">每个链接 <b>7 天有效</b> 且 <b>只能下载 1 次</b>。</span></p>
+    <div class="token-box" id="share-link" style="font-size: 12px;"></div>
+    <div class="row-actions" style="margin-top: 12px; justify-content: flex-end;">
+      <button class="btn secondary" onclick="document.getElementById('modal-share').classList.remove('active')">关闭</button>
+      <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('share-link').textContent); toast('链接已复制', 'success');">📋 复制链接</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-stack" id="toasts" aria-live="polite"></div>
 
 <script>
@@ -501,6 +582,7 @@ $$('.tab').forEach(t => t.addEventListener('click', () => {
   t.classList.add('active');
   $(`.tab-panel[data-panel="${t.dataset.tab}"]`).classList.add('active');
   if (t.dataset.tab === 'tasks') refreshTasks();
+  if (t.dataset.tab === 'drafts') { refreshDraftQuota(); refreshDrafts(); }
   if (t.dataset.tab === 'clients') { refreshClients(); refreshSetupCodes(); }
   if (t.dataset.tab === 'users') refreshUsers();
 }));
@@ -788,6 +870,150 @@ async function submitNewUser() {
     $('#modal-new-user').classList.remove('active');
     refreshUsers();
   } catch (e) { toast('创建失败: ' + e.message, 'error'); }
+}
+
+// ============== Drafts ==============
+let draftPageNum = 1;
+const DRAFT_PAGE_SIZE = 20;
+
+function clearDraftFilters() {
+  $('#draft-q').value = '';
+  $('#draft-min-size').value = '';
+  $('#draft-max-size').value = '';
+  $('#draft-date-from').value = '';
+  $('#draft-date-to').value = '';
+  $('#draft-sort').value = 'created_desc';
+  draftPageNum = 1;
+  refreshDrafts();
+}
+
+async function refreshDraftQuota() {
+  try {
+    const r = await fetch('/api/drafts/quota');
+    const q = await r.json();
+    const bar = $('#quota-bar');
+    const text = $('#quota-text');
+    const hint = $('#draft-quota-hint');
+    if (q.unlimited) {
+      bar.style.width = '5%'; bar.style.background = 'var(--accent-3)';
+      text.textContent = `已用 ${q.used_mb} MB · 无 quota 限制`;
+      hint.textContent = `${q.draft_count} 个草稿 · 无限`;
+    } else {
+      const pct = q.quota_bytes > 0 ? (q.used_bytes / q.quota_bytes * 100) : 0;
+      bar.style.width = Math.min(100, pct).toFixed(1) + '%';
+      bar.style.background = pct > 90 ? 'var(--danger)' : pct > 70 ? 'var(--accent-2)' : 'var(--accent-3)';
+      text.textContent = `已用 ${q.used_mb} / ${q.quota_mb} MB  (${pct.toFixed(1)}%) · ${q.draft_count} 个草稿`;
+      hint.textContent = `${q.draft_count} / ${q.quota_mb} MB`;
+    }
+  } catch (e) { console.error(e); }
+}
+
+function buildDraftQuery() {
+  const p = new URLSearchParams();
+  const q = $('#draft-q').value.trim(); if (q) p.set('q', q);
+  const minS = parseInt($('#draft-min-size').value, 10);
+  if (!isNaN(minS) && minS > 0) p.set('min_size', String(minS * 1024));
+  const maxS = parseInt($('#draft-max-size').value, 10);
+  if (!isNaN(maxS) && maxS > 0) p.set('max_size', String(maxS * 1024));
+  const df = $('#draft-date-from').value;
+  if (df) p.set('date_from', df + 'T00:00:00Z');
+  const dt = $('#draft-date-to').value;
+  if (dt) p.set('date_to', dt + 'T23:59:59Z');
+  p.set('sort', $('#draft-sort').value);
+  p.set('page', String(draftPageNum));
+  p.set('page_size', String(DRAFT_PAGE_SIZE));
+  return p.toString();
+}
+
+async function refreshDrafts() {
+  try {
+    const r = await fetch('/api/drafts?' + buildDraftQuery());
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const data = await r.json();
+    const items = data.items || [];
+    const tbody = $('#drafts-tbody');
+    $('#badge-drafts').textContent = data.total || 0;
+    $('#drafts-total').textContent = `共 ${data.total} 条 · 第 ${data.page} / ${Math.max(1, Math.ceil(data.total / DRAFT_PAGE_SIZE))} 页`;
+    $('#drafts-page-now').textContent = data.page;
+    $('#drafts-prev').disabled = data.page <= 1;
+    $('#drafts-next').disabled = (data.page * DRAFT_PAGE_SIZE) >= data.total;
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无草稿 · 客户端 worker 生成完会自动上传到这里</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(d => `
+      <tr>
+        <td class="mono">${d.id}</td>
+        <td class="mono small" title="${escapeHtml(d.filename)}">${escapeHtml(d.filename)}</td>
+        <td>${escapeHtml(d.task_name || '-')}${d.task_id ? ` <span class="dim small mono">#${d.task_id}</span>` : ''}</td>
+        <td class="small">${escapeHtml(d.workflow_name || '-')}</td>
+        <td class="mono small">${fmtBytes(d.size)}</td>
+        <td class="small mono">${fmtTime(d.created_at)}</td>
+        <td class="small mono" title="最后下载：${d.last_downloaded_at || '从未'}">${d.download_count} 次</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn small secondary" onclick="downloadDraft(${d.id}, '${escapeHtml(d.filename)}')">⬇️ 下载</button>
+            <button class="btn small secondary" onclick="shareDraft(${d.id})">🔗 分享</button>
+            <button class="btn small secondary danger" onclick="deleteDraft(${d.id}, '${escapeHtml(d.filename)}')">删</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) { console.error(e); toast('加载草稿失败: ' + e.message, 'error'); }
+}
+
+function draftPage(delta) {
+  draftPageNum = Math.max(1, draftPageNum + delta);
+  refreshDrafts();
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  if (n < 1024*1024*1024) return (n/1024/1024).toFixed(2) + ' MB';
+  return (n/1024/1024/1024).toFixed(2) + ' GB';
+}
+
+async function downloadDraft(id, filename) {
+  // 用隐藏 a 标签触发下载（带 token 走 fetch 再 blob 下来，避免 a 标签不带 header）
+  try {
+    const r = await fetch(`/api/drafts/${id}/download`);
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    toast('下载已开始', 'success');
+    // 异步刷一次（计数 +1 已生效）
+    setTimeout(() => { refreshDrafts(); refreshDraftQuota(); }, 500);
+  } catch (e) { toast('下载失败: ' + e.message, 'error'); }
+}
+
+async function deleteDraft(id, filename) {
+  if (!confirm(`确认硬删草稿「${filename}」？\n⚠️ 磁盘文件 + DB 记录一起删，不可恢复。`)) return;
+  try {
+    const r = await fetch(`/api/drafts/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    toast('已删除', 'success');
+    refreshDrafts(); refreshDraftQuota();
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+async function shareDraft(id) {
+  const ttl = prompt('分享链接有效期（天，1~90，默认 7）:', '7');
+  if (ttl === null) return;
+  const n = parseInt(ttl, 10);
+  if (isNaN(n) || n < 1 || n > 90) { toast('请输入 1~90 之间的数字', 'warn'); return; }
+  try {
+    const r = await fetch(`/api/drafts/${id}/share?ttl_days=${n}`, { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const data = await r.json();
+    const url = window.location.origin + '/share/' + data.share.token;
+    $('#share-link').textContent = url;
+    $('#modal-share').classList.add('active');
+  } catch (e) { toast('分享失败: ' + e.message, 'error'); }
 }
 
 // 启动

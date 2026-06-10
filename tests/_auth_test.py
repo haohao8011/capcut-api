@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
+
 
 # 清掉旧 db 让 seed_admin 重新跑
 DB = ROOT / "data" / "capcut.db"
@@ -12,8 +12,8 @@ if DB.exists():
     DB.unlink()
 
 from fastapi.testclient import TestClient  # noqa: E402
-from capcut_draft import web  # noqa: E402
-from capcut_draft import auth as auth_mod  # noqa: E402
+from capcut_draft_server import web  # noqa: E402
+from capcut_draft_server import auth as auth_mod  # noqa: E402
 
 client = TestClient(web.app)
 

@@ -1,16 +1,20 @@
-"""数据库模型（任务系统）：Client / Asset / Task / TaskLog。
+"""数据库模型（任务系统 + 草稿云端存储）：Client / Asset / Task / TaskLog / Draft / DraftShare / SetupCode。
 
 User 在 `auth.py`（鉴权强耦合）。`models.py` 保留原来的切点数据类（CutPoint/Segment/Word/Subtitle）。
-这里只放任务系统相关的表 + 客户端鉴权依赖。
+这里只放任务系统相关的表 + 客户端鉴权依赖 + 草稿云端存储。
 
 设计要点：
 - 客户端用 opaque token（不是 JWT），存 hash、调 API 带明文
 - 任务状态用 String + 应用层校验（跨 DB 兼容：SQLite / PG / MySQL 都能跑）
 - 主视频 / B-roll 资产只存"路径引用"，文件始终在客户端本地
-- **云端不存任何文件本体**：临时缓存（如果有）由定时任务清理（见 deploy/aliyun-server.sh）
+- **草稿 .zip 存在服务端**（data/drafts/{owner_id}/），员工可下载/删除/分享
+  - Quota 默认 5GB/人（环境变量 CAPCUT_DRAFT_QUOTA_MB 可改）
+  - 超限上传会被拒绝（不自动删，让用户自己删历史）
+  - 草稿永久保留，cleanup_loop 不动草稿表
 """
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import datetime, timezone
 from typing import Annotated, Optional
@@ -34,6 +38,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from . import auth as auth_mod  # 复用 Base / engine / SessionLocal
+
+log = logging.getLogger(__name__)
 
 Base = auth_mod.Base  # 共享同一个 declarative base
 
@@ -232,6 +238,126 @@ def verify_client_token(plain: str, hashed: str) -> bool:
     return auth_mod.verify_pwd(plain, hashed)
 
 
+# -------- 草稿（云端存储 + 分享） --------
+
+class Draft(Base):
+    """云端草稿：客户端 worker 把 .draft 目录打包成 .zip 上传到这里。
+
+    - storage_path 形如 `data/drafts/{owner_id}/draft_20260510_153022_task123.zip`
+    - size 是上传时的字节数（用于 quota 计算）
+    - 草稿**永久保留**，不由 cleanup_loop 清理（用户资产，非临时缓存）
+    - 删除是硬删（DB + 磁盘文件一起）
+    - download_count / last_downloaded_at 给"下载次数统计"用
+    """
+    __tablename__ = "drafts"
+    __table_args__ = (
+        Index("ix_draft_owner_created", "owner_id", "created_at"),
+        Index("ix_draft_task", "task_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # 原始任务名（便于 UI 展示，task 删除时也不会丢）
+    task_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # 客户端上传时的 workflow 名
+    workflow_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    # 磁盘上的文件名（draft_20260510_153022_task123.zip）
+    filename: Mapped[str] = mapped_column(String(255))
+    # 相对 data/ 的存储路径（owner_id 子目录下）
+    storage_path: Mapped[str] = mapped_column(String(512))
+    size: Mapped[int] = mapped_column(BigInteger, default=0)
+    # SHA256 用于完整性校验（可选，调试时用）
+    sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # 上传时客户端给的备注
+    note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    download_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "owner_id": self.owner_id,
+            "task_name": self.task_name,
+            "workflow_name": self.workflow_name,
+            "filename": self.filename,
+            "storage_path": self.storage_path,
+            "size": self.size,
+            "sha256": self.sha256,
+            "note": self.note,
+            "download_count": self.download_count,
+            "last_downloaded_at": (
+                self.last_downloaded_at.isoformat() if self.last_downloaded_at else None
+            ),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class DraftShare(Base):
+    """草稿分享链接：临时下载 token。
+
+    流程：
+    1. owner 调 `POST /api/drafts/{id}/share` → 创建 DraftShare（含 64 位 token）
+    2. 服务端返回完整 URL：`https://server/share/{token}`
+    3. 同事点链接 → 第一次访问时 `GET /share/{token}?confirm=1` 真正下载
+       - 同时把 used_at 标记，used=True（防爬）
+    4. expires_at 后失效（默认 7 天）
+    """
+    __tablename__ = "draft_shares"
+    __table_args__ = (Index("ix_draftshare_draft", "draft_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    draft_id: Mapped[int] = mapped_column(
+        ForeignKey("drafts.id", ondelete="CASCADE"), index=True
+    )
+    # 谁分享的（通常 = draft.owner_id）
+    created_by: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 用了之后记录 IP/UA（审计用）
+    used_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "draft_id": self.draft_id,
+            "created_by": self.created_by,
+            "token": self.token,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "used": self.used,
+            "used_at": self.used_at.isoformat() if self.used_at else None,
+            "used_ip": self.used_ip,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    @property
+    def is_active(self) -> bool:
+        """未过期 + 未使用 = 有效。"""
+        if self.used:
+            return False
+        exp = self.expires_at
+        if exp is not None and exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        return exp is None or exp > datetime.now(timezone.utc)
+
+
 # -------- 一次性安装码（管理员生成，员工兑换） --------
 
 class SetupCode(Base):
@@ -283,8 +409,26 @@ class SetupCode(Base):
 
 
 def init_all_tables() -> None:
-    """建所有表（users / clients / assets / tasks / task_logs / setup_codes）。"""
+    """建所有表（users / clients / assets / tasks / task_logs / setup_codes / drafts / draft_shares）。"""
     Base.metadata.create_all(bind=auth_mod.engine)
+    _migrate_add_columns()
+
+
+def _migrate_add_columns() -> None:
+    """轻量级 schema 迁移：只处理"加列"，安全可重入。
+
+    SQLAlchemy 的 create_all 不会改已存在的表，所以新加的 nullable 列需要
+    在这里手动 ALTER。SQLite/PG/MySQL 语法差异大 → 用 SQLAlchemy Inspector。
+    """
+    from sqlalchemy import inspect, text  # 局部 import 避免污染顶部
+    insp = inspect(auth_mod.engine)
+    with auth_mod.engine.begin() as conn:
+        # users.quota_mb（草稿云端存储 quota，MB）
+        if insp.has_table("users"):
+            cols = {c["name"] for c in insp.get_columns("users")}
+            if "quota_mb" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN quota_mb INTEGER"))
+                log.info("[db] migration: added users.quota_mb")
 
 
 # -------- FastAPI 依赖：客户端鉴权 --------

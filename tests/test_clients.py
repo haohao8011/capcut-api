@@ -27,12 +27,12 @@ os.environ["CAPCUT_DB_URL"] = f"sqlite:///{TMP_DB}"
 os.environ["CAPCUT_JWT_SECRET"] = "test_secret_for_unit_tests_only"
 
 # 把 src 加进 sys.path
-sys.path.insert(0, str(ROOT / "src"))
+
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from capcut_draft import auth as auth_mod, db_models  # noqa: E402
-from capcut_draft.web import app  # noqa: E402
+from capcut_draft_server import auth as auth_mod, db_models  # noqa: E402
+from capcut_draft_server.web import app  # noqa: E402
 
 # 手动建表（TestClient 不会触发 on_event("startup")）
 db_models.init_all_tables()

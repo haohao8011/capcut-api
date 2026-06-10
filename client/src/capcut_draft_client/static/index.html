@@ -70,10 +70,11 @@
   </header>
 
   <div class="card privacy" style="margin-bottom:16px">
-    <h2>🔒 隐私 / 零缓存</h2>
-    <p>本机所有 <strong>草稿、数字人视频、穿插素材</strong> 都不上传到云端。
-       云端服务端只存：路径引用 + 文件大小/时长 + 任务状态 + 错误日志。
-       任何时候点 <code>停止服务</code>、删 <code>capcut.db</code>，云端立即看不到你机器上的任何东西。</p>
+    <h2>🔒 隐私 / 零素材缓存</h2>
+    <p>本机所有 <strong>数字人视频、穿插素材</strong> 都不上传到云端 —
+       云端只存路径引用 + 元数据。<br>
+       任务跑完后，<strong>草稿 .zip 会自动上传到云端</strong>（默认 5GB/人），
+       这样你换电脑、或者想分享给同事时，从 Web 后台就能直接下。</p>
   </div>
 
   <div class="grid">
@@ -107,6 +108,24 @@
       <div class="row"><span class="k">输出目录</span><span class="v" id="outdir">-</span></div>
       <div class="row"><span class="k">UI 端口</span><span class="v" id="uiport">-</span></div>
     </div>
+  </div>
+
+  <!-- 草稿管理 -->
+  <div class="card" style="margin-top:16px">
+    <h2>📦 已上传草稿（云端）</h2>
+    <div class="row"><span class="k">云端存储用量</span><span class="v" id="quota">加载中…</span></div>
+    <div class="row"><span class="k">草稿数量</span><span class="v" id="draft-count">-</span></div>
+    <div class="row"><span class="k">待重传</span><span class="v" id="pending-count">-</span></div>
+    <div class="stats" style="margin-top:12px">
+      <div class="stat"><div class="n" id="stat-uploaded">-</div><div class="l">已上传</div></div>
+      <div class="stat"><div class="n" id="stat-failed">-</div><div class="l">失败</div></div>
+    </div>
+    <div style="margin-top:14px; display:flex; gap:8px;">
+      <button class="btn" onclick="refreshDrafts()">🔄 刷新草稿</button>
+      <button class="btn secondary" onclick="retryPending()">📤 重传待上传</button>
+    </div>
+    <div id="drafts-list" style="margin-top:14px; max-height: 400px; overflow-y: auto;"></div>
+    <div id="pending-list" style="margin-top:14px;"></div>
   </div>
 
   <footer>
@@ -145,6 +164,8 @@ async function refresh() {
     $("done").textContent = s.stats?.tasks_done ?? 0;
     $("failed").textContent = s.stats?.tasks_failed ?? 0;
     $("uptime").textContent = s.stats?.uptime_sec ? s.stats.uptime_sec.toFixed(0) : 0;
+    $("stat-uploaded").textContent = s.stats?.drafts_uploaded ?? 0;
+    $("stat-failed").textContent = s.stats?.drafts_upload_failed ?? 0;
     // 配置
     $("server").textContent = c.server_url;
     $("cname").textContent = c.client_name;
@@ -168,11 +189,87 @@ async function triggerHb() {
   alert(r.msg || JSON.stringify(r));
   refresh();
 }
-fetch("/api/config").then(r=>r.json()).then(c => $("version").textContent = "v" + c.token_set?.toString ? "" : "");
+
+// 草稿管理
+function fmtBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1024*1024) return (n/1024).toFixed(1) + " KB";
+  if (n < 1024*1024*1024) return (n/1024/1024).toFixed(2) + " MB";
+  return (n/1024/1024/1024).toFixed(2) + " GB";
+}
+async function refreshDrafts() {
+  try {
+    // quota
+    const q = await fetch("/api/drafts/quota").then(r => r.json());
+    if (q.unlimited) {
+      $("quota").textContent = `${q.used_mb} MB / 无限制`;
+    } else {
+      $("quota").textContent = `${q.used_mb} / ${q.quota_mb} MB`;
+    }
+    $("draft-count").textContent = `${q.draft_count} 个`;
+    // 云端草稿
+    const d = await fetch("/api/drafts?page_size=20&sort=created_desc").then(r => r.json());
+    const items = d.items || [];
+    const dl = $("drafts-list");
+    if (items.length === 0) {
+      dl.innerHTML = '<div style="color:var(--muted); font-size:13px; padding:8px 0;">暂无草稿</div>';
+    } else {
+      dl.innerHTML = items.map(x => `
+        <div style="display:flex; justify-content:space-between; align-items:center;
+                    padding:8px 0; border-bottom:1px solid var(--border); font-size:13px;">
+          <div>
+            <div style="color:var(--text);">${x.task_name || x.filename}</div>
+            <div style="color:var(--muted); font-size:11px;">
+              ${fmtBytes(x.size)} · ${ago(x.created_at)} · 下 ${x.download_count} 次
+            </div>
+          </div>
+          <button class="btn secondary" style="font-size:12px; padding:4px 10px;"
+                  onclick="delDraft(${x.id}, '${x.filename.replace(/'/g, "\\'")}')">删</button>
+        </div>
+      `).join('');
+    }
+    // pending
+    const p = await fetch("/api/drafts/pending").then(r => r.json());
+    $("pending-count").textContent = `${p.count} 个`;
+    const pl = $("pending-list");
+    if (p.count === 0) {
+      pl.innerHTML = '';
+    } else {
+      pl.innerHTML = `<h3 style="font-size:12px; color:var(--muted); margin-top:12px;
+                                text-transform:uppercase; letter-spacing:.5px;">
+        ⚠️ 待重传（${p.count}）
+      </h3>` + p.items.map(x => `
+        <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:12px; color:var(--muted);">
+          <span>${x.filename} · ${fmtBytes(x.size)}</span>
+          <span>${x.meta?.reason || ''}</span>
+        </div>
+      `).join('');
+    }
+  } catch (e) { console.error(e); }
+}
+async function delDraft(id, fn) {
+  if (!confirm(`确认删除云端草稿「${fn}」？`)) return;
+  try {
+    const r = await fetch(`/api/drafts/${id}`, { method: "DELETE" }).then(r => r.json());
+    if (r._status && r._status >= 400) throw new Error(r.detail || r._status);
+    refreshDrafts();
+  } catch (e) { alert('删除失败: ' + e.message); }
+}
+async function retryPending() {
+  if (!confirm('立刻重传 pending_uploads/ 里的所有 .zip？')) return;
+  try {
+    const r = await fetch("/api/drafts/retry-pending", { method: "POST" }).then(r => r.json());
+    alert(`重传完成: 成功 ${r.uploaded} 个, 失败 ${r.failed} 个${r.errors?.length ? '\n' + r.errors.join('\n') : ''}`);
+    refreshDrafts();
+  } catch (e) { alert('重传失败: ' + e.message); }
+}
+fetch("/api/config").then(r=>r.json()).then(c => $("version").textContent = "client");
 // 简单 init
 $("version").textContent = "client";
 refresh();
+refreshDrafts();
 setInterval(refresh, 5000);
+setInterval(refreshDrafts, 15000);
 </script>
 </body>
 </html>

@@ -37,8 +37,8 @@ from pydantic import BaseModel
 
 from . import auth as auth_mod
 from . import db_models
-from . import web_assets, web_clients, web_tasks
-from .cli import _process_one  # 复用 cli 的处理函数
+from . import web_assets, web_clients, web_drafts, web_tasks
+from capcut_draft_core.cli import _process_one  # 共享核心：ASR + 草稿生成
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +49,9 @@ MAIN_DIR = UPLOAD_DIR / "main"
 BROLL_DIR = UPLOAD_DIR / "broll"
 OUTPUT_DIR = ROOT / "outputs"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-CONFIG_DIR = ROOT / "config"
+# 优先用 monorepo 顶层 config/（monorepo 重构后的位置），fallback 到 server/config/
+_TOP_CONFIG = ROOT.parent / "config" if (ROOT.parent / "config").exists() else None
+CONFIG_DIR = _TOP_CONFIG if _TOP_CONFIG else (ROOT / "config")
 BUILTIN_WF_FILE = CONFIG_DIR / "workflows.builtin.json"
 USER_WF_FILE = CONFIG_DIR / "workflows.user.json"
 
@@ -213,7 +215,7 @@ def _cleanup_loop() -> None:
 @app.on_event("startup")
 def _startup() -> None:
     _setup_logging()
-    # 建所有表（users / clients / assets / tasks / task_logs）
+    # 建所有表（users / clients / assets / tasks / task_logs / setup_codes / drafts / draft_shares）
     db_models.init_all_tables()
     if auth_mod.seed_admin():
         log.warning("已创建默认管理员 xiaoma（密码 niubi666），首次登录后请改密！")
@@ -236,6 +238,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(web_clients.router)
 app.include_router(web_assets.router)
 app.include_router(web_tasks.router)
+app.include_router(web_drafts.router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)

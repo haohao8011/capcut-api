@@ -22,10 +22,10 @@ TMP_DB.unlink(missing_ok=True)
 os.environ["CAPCUT_DB_URL"] = f"sqlite:///{TMP_DB}"
 os.environ["CAPCUT_JWT_SECRET"] = "test_secret_for_unit_tests_only"
 
-sys.path.insert(0, str(ROOT / "src"))
 
-from capcut_draft import auth as auth_mod, db_models  # noqa: E402
-from capcut_draft.web import app  # noqa: E402
+
+from capcut_draft_server import auth as auth_mod, db_models  # noqa: E402
+from capcut_draft_server.web import app  # noqa: E402
 
 db_models.init_all_tables()
 auth_mod.seed_admin()

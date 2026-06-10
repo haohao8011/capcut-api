@@ -1,28 +1,13 @@
 ﻿@echo off
-REM ===================================================================
-REM   Stop capcut-draft web service
-REM ===================================================================
-
+REM 停止 capcut-draft 服务端（按端口找进程 kill）
 setlocal
-cd /d "%~dp0"
-
 set PORT=8000
 if not "%1"=="" set PORT=%1
 
-echo Stopping service on port %PORT% ...
-
-set FOUND=0
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%PORT% " ^| findstr LISTENING') do (
-    echo   Killing PID %%P ...
+echo 停止服务端（端口 %PORT%）...
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":%PORT% " ^| findstr LISTENING 2^^^>nul') do (
+    echo   Killing PID %%P
     taskkill /F /PID %%P >nul 2>nul
-    if not errorlevel 1 set FOUND=1
 )
-
-if "%FOUND%"=="1" (
-    echo   Stopped.
-) else (
-    echo   No service running on port %PORT%.
-)
-
-pause
-exit /b 0
+echo Done.
+timeout /t 2 /nobreak >nul

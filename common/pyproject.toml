@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capcut-draft-core"
+version = "0.2.0"
+description = "capcut-draft 共享核心：ASR + 切点 + 剪映草稿生成（纯函数，无 HTTP 依赖）"
+readme = "../../../README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "小马" }]
+
+dependencies = [
+    "pydantic>=2.0",
+    "pydub>=0.25",
+    "numpy>=1.26",
+    "imageio-ffmpeg>=0.5",
+    "soundfile>=0.12",
+    "pyJianYingDraft>=0.2.0",
+    "funasr>=1.0",
+    "modelscope>=1.9",
+    "torch>=2.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+# 独立命令行（手工跑单个 / 批量视频）
+capcut-draft = "capcut_draft_core.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
