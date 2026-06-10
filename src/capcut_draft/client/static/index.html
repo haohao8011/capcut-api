@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>capcut-draft client</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #181c22;
+    --border: #2a2f37;
+    --text: #e6e8eb;
+    --muted: #8a93a3;
+    --accent: #4f9eff;
+    --ok: #3ecf8e;
+    --warn: #f5a623;
+    --err: #ff5e5e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text);
+    padding: 24px; line-height: 1.5;
+  }
+  .container { max-width: 980px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  header h1 { font-size: 22px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.online { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.offline { background: var(--err); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--panel);
+          border: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+          padding: 18px; }
+  .card h2 { font-size: 14px; color: var(--muted); margin-bottom: 12px;
+             text-transform: uppercase; letter-spacing: 0.5px; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0;
+         border-bottom: 1px solid var(--border); font-size: 14px; }
+  .row:last-child { border-bottom: none; }
+  .row .k { color: var(--muted); }
+  .row .v { font-family: ui-monospace, "Cascadia Code", monospace; }
+  .btn { background: var(--accent); color: white; border: none; padding: 8px 14px;
+         border-radius: 4px; cursor: pointer; font-size: 14px; }
+  .btn:hover { opacity: 0.85; }
+  .btn.secondary { background: transparent; color: var(--text);
+                   border: 1px solid var(--border); margin-left: 8px; }
+  .privacy { background: linear-gradient(135deg, #0d3a2c, #0a2e1e);
+             border: 1px solid #1f6b4f; }
+  .privacy h2 { color: var(--ok); }
+  .privacy p { font-size: 14px; color: #b6e0cd; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 3px;
+         font-size: 13px; }
+  .stats { display: flex; gap: 12px; margin-top: 12px; }
+  .stat { flex: 1; background: rgba(255,255,255,0.03); border-radius: 4px;
+          padding: 10px; text-align: center; }
+  .stat .n { font-size: 22px; font-weight: 600; color: var(--accent); }
+  .stat .l { font-size: 12px; color: var(--muted); }
+  footer { margin-top: 24px; text-align: center; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <span class="dot" id="dot"></span>
+    <h1>capcut-draft 客户端</h1>
+    <span class="pill" id="version"></span>
+    <span class="pill" id="pid"></span>
+  </header>
+
+  <div class="card privacy" style="margin-bottom:16px">
+    <h2>🔒 隐私 / 零缓存</h2>
+    <p>本机所有 <strong>草稿、数字人视频、穿插素材</strong> 都不上传到云端。
+       云端服务端只存：路径引用 + 文件大小/时长 + 任务状态 + 错误日志。
+       任何时候点 <code>停止服务</code>、删 <code>capcut.db</code>，云端立即看不到你机器上的任何东西。</p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Worker 状态</h2>
+      <div class="row"><span class="k">运行中</span><span class="v" id="running">-</span></div>
+      <div class="row"><span class="k">当前任务</span><span class="v" id="current">-</span></div>
+      <div class="row"><span class="k">最近心跳</span><span class="v" id="last-hb">-</span></div>
+      <div class="row"><span class="k">最近扫盘</span><span class="v" id="last-scan">-</span></div>
+      <div class="row"><span class="k">扫到文件</span><span class="v" id="scan-count">-</span></div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="done">-</div><div class="l">已完成</div></div>
+        <div class="stat"><div class="n" id="failed">-</div><div class="l">失败</div></div>
+        <div class="stat"><div class="n" id="uptime">-</div><div class="l">运行时长(s)</div></div>
+      </div>
+      <div style="margin-top:14px">
+        <button class="btn" onclick="triggerScan()">立刻扫盘</button>
+        <button class="btn secondary" onclick="triggerHb()">立刻心跳</button>
+        <button class="btn secondary" onclick="refresh()">刷新状态</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>客户端配置</h2>
+      <div class="row"><span class="k">服务端 URL</span><span class="v" id="server">-</span></div>
+      <div class="row"><span class="k">客户端名</span><span class="v" id="cname">-</span></div>
+      <div class="row"><span class="k">本机名</span><span class="v" id="hostname">-</span></div>
+      <div class="row"><span class="k">客户端 ID</span><span class="v" id="cid">-</span></div>
+      <div class="row"><span class="k">Token</span><span class="v" id="tok">-</span></div>
+      <div class="row"><span class="k">素材目录</span><span class="v" id="dirs">-</span></div>
+      <div class="row"><span class="k">输出目录</span><span class="v" id="outdir">-</span></div>
+      <div class="row"><span class="k">UI 端口</span><span class="v" id="uiport">-</span></div>
+    </div>
+  </div>
+
+  <footer>
+    capcut-draft client · 本地工具 · 所有文件不出本机 ·
+    <a href="/docs" style="color:var(--accent)">API docs</a>
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function fmtTime(iso) {
+  if (!iso) return "-";
+  try { return new Date(iso).toLocaleString("zh-CN"); } catch { return iso; }
+}
+function ago(iso) {
+  if (!iso) return "-";
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return s.toFixed(0) + "s 前";
+  if (s < 3600) return (s/60).toFixed(0) + "m 前";
+  if (s < 86400) return (s/3600).toFixed(0) + "h 前";
+  return (s/86400).toFixed(0) + "d 前";
+}
+async function refresh() {
+  try {
+    const [s, c] = await Promise.all([
+      fetch("/api/status").then(r => r.json()),
+      fetch("/api/config").then(r => r.json()),
+    ]);
+    // 状态
+    $("running").textContent = s.running ? "✅ 是" : "❌ 否";
+    $("dot").className = "dot " + (s.running ? "online" : "offline");
+    $("current").textContent = s.current_task_id || "(空闲)";
+    $("last-hb").textContent = ago(s.last_heartbeat_at);
+    $("last-scan").textContent = ago(s.last_scan_at);
+    $("scan-count").textContent = s.last_scan_files ?? 0;
+    $("done").textContent = s.stats?.tasks_done ?? 0;
+    $("failed").textContent = s.stats?.tasks_failed ?? 0;
+    $("uptime").textContent = s.stats?.uptime_sec ? s.stats.uptime_sec.toFixed(0) : 0;
+    // 配置
+    $("server").textContent = c.server_url;
+    $("cname").textContent = c.client_name;
+    $("hostname").textContent = c.hostname;
+    $("cid").textContent = c.client_id ?? "(未注册)";
+    $("tok").textContent = c.token_set ? c.token_prefix : "(未设置)";
+    $("dirs").textContent = (c.assets_dirs || []).join("; ") || "(未配置)";
+    $("outdir").textContent = c.worker.output_dir;
+    $("uiport").textContent = c.ui.port;
+  } catch (e) {
+    $("running").textContent = "❌ 后端无响应";
+  }
+}
+async function triggerScan() {
+  const r = await fetch("/api/scan", {method:"POST"}).then(r=>r.json());
+  alert(r.msg || JSON.stringify(r));
+  refresh();
+}
+async function triggerHb() {
+  const r = await fetch("/api/heartbeat", {method:"POST"}).then(r=>r.json());
+  alert(r.msg || JSON.stringify(r));
+  refresh();
+}
+fetch("/api/config").then(r=>r.json()).then(c => $("version").textContent = "v" + c.token_set?.toString ? "" : "");
+// 简单 init
+$("version").textContent = "client";
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

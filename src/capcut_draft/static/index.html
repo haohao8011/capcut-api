@@ -3,53 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>capcut-draft · 数字人 → 剪映草稿</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<title>capcut-draft · 控制台</title>
 <style>
-  /* ===== design tokens ===== */
   :root {
-    --bg-0: #0a0b0e;
-    --bg-1: #11131a;
-    --bg-2: #181b24;
-    --bg-3: #21242f;
-    --line: #2a2e3a;
-    --line-strong: #3a3f4f;
-    --fg-0: #e8eaf0;
-    --fg-1: #aab0c0;
-    --fg-2: #6c7385;
-    --fg-3: #454a5a;
-    --accent: #00d4ff;          /* 电压蓝 */
-    --accent-2: #ff6a00;        /* 警示橙 */
-    --accent-3: #6effa1;        /* 成功绿 */
-    --danger: #ff4d6d;
+    --bg-0: #0a0b0e; --bg-1: #11131a; --bg-2: #181b24; --bg-3: #21242f;
+    --line: #2a2e3a; --line-strong: #3a3f4f;
+    --fg-0: #e8eaf0; --fg-1: #aab0c0; --fg-2: #6c7385; --fg-3: #454a5a;
+    --accent: #00d4ff; --accent-2: #ff6a00; --accent-3: #6effa1; --danger: #ff4d6d;
     --shadow-1: 0 1px 0 rgba(255,255,255,.04) inset, 0 1px 2px rgba(0,0,0,.4);
-    --shadow-2: 0 8px 24px rgba(0,0,0,.5);
-    --r-sm: 4px;
-    --r-md: 6px;
-    --r-lg: 10px;
-    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    --sans: "Noto Sans SC", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --r-sm: 4px; --r-md: 6px; --r-lg: 10px;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Code", monospace;
+    --sans: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", sans-serif;
   }
-
   * { box-sizing: border-box; }
   html, body { background: var(--bg-0); color: var(--fg-0); font-family: var(--sans); margin: 0; padding: 0; }
-  body {
-    min-height: 100vh;
-    background:
-      radial-gradient(1200px 600px at 90% -10%, rgba(0,212,255,.06), transparent 60%),
-      radial-gradient(800px 500px at -10% 110%, rgba(255,106,0,.04), transparent 60%),
-      var(--bg-0);
-  }
+  body { min-height: 100vh; line-height: 1.55; }
+  h1, h2, h3 { font-weight: 600; letter-spacing: .02em; margin: 0; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
-  /* ===== layout ===== */
-  .app { max-width: 1280px; margin: 0 auto; padding: 28px 24px 80px; }
+  .app { margin: 0 auto; padding: 22px 28px 24px; max-width: 1400px; }
+
   .topbar {
     display: flex; align-items: center; justify-content: space-between;
-    padding-bottom: 18px; margin-bottom: 28px; border-bottom: 1px solid var(--line);
+    padding-bottom: 14px; margin-bottom: 18px; border-bottom: 1px solid var(--line);
   }
   .brand { display: flex; align-items: center; gap: 14px; }
   .logo {
@@ -58,502 +35,345 @@
     display: grid; place-items: center; color: #0a0b0e; font-weight: 800;
     box-shadow: 0 0 24px rgba(0,212,255,.4);
   }
-  .brand h1 { margin: 0; font-size: 18px; letter-spacing: .5px; }
+  .brand h1 { font-size: 18px; }
   .brand small { display: block; font-family: var(--mono); color: var(--fg-2); font-size: 11px; margin-top: 2px; letter-spacing: 1px; }
-  .topbar .meta { display: flex; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
+  .topbar .meta { display: flex; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--fg-2); align-items: center; }
   .topbar .meta a { color: var(--fg-1); }
 
-  .grid {
-    display: grid;
-    grid-template-columns: 1.05fr .95fr;
-    gap: 20px;
+  .privacy-banner {
+    background: linear-gradient(135deg, #0d3a2c, #0a2e1e);
+    border: 1px solid #1f6b4f; border-radius: var(--r-md);
+    padding: 10px 14px; margin-bottom: 18px; font-size: 13px; color: #b6e0cd;
+    display: flex; align-items: center; gap: 10px;
   }
-  @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+  .privacy-banner strong { color: var(--accent-3); }
 
-  /* ===== card ===== */
+  /* tabs */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+  .tab {
+    padding: 10px 18px; cursor: pointer; color: var(--fg-1);
+    background: transparent; border: 0; border-bottom: 2px solid transparent;
+    font-family: var(--sans); font-size: 14px; font-weight: 500;
+    transition: all .15s;
+  }
+  .tab:hover { color: var(--fg-0); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .badge {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    background: var(--bg-3); border-radius: 10px; font-family: var(--mono);
+    font-size: 11px; color: var(--fg-1);
+  }
+  .tab.active .badge { background: rgba(0,212,255,.15); color: var(--accent); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* card */
   .card {
     background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
-    border: 1px solid var(--line);
-    border-radius: var(--r-lg);
-    box-shadow: var(--shadow-1);
-    margin-bottom: 20px;
-    overflow: hidden;
+    border: 1px solid var(--line); border-radius: var(--r-lg);
+    box-shadow: var(--shadow-1); margin-bottom: 18px; overflow: hidden;
   }
   .card-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 18px; border-bottom: 1px solid var(--line);
     background: rgba(255,255,255,.015);
   }
-  .card-head .num {
-    font-family: var(--mono); font-weight: 700; color: var(--accent);
-    background: rgba(0,212,255,.12); border-radius: 4px;
-    padding: 2px 8px; font-size: 12px; margin-right: 10px;
-  }
-  .card-head .num.star {
-    color: #ffd86b; background: rgba(255,216,107,.12);
-    font-size: 13px; padding: 1px 8px;
-  }
-  .card-head h2 { font-size: 14px; font-weight: 500; margin: 0; letter-spacing: .5px; }
+  .card-head h2 { font-size: 14px; font-weight: 500; letter-spacing: .5px; }
   .card-head .hint { font-size: 11px; color: var(--fg-2); font-family: var(--mono); }
   .card-body { padding: 18px; }
 
-  /* ===== drop zone ===== */
-  .drop {
-    display: block; position: relative;
-    border: 1.5px dashed var(--line-strong);
-    border-radius: var(--r-md);
-    padding: 28px 16px; text-align: center; color: var(--fg-1);
-    background: var(--bg-3);
-    cursor: pointer; transition: all .15s ease;
-    user-select: none;
-  }
-  .drop:hover, .drop:focus-within { border-color: var(--accent); color: var(--fg-0); }
-  .drop.drag { border-color: var(--accent); background: rgba(0,212,255,.06); transform: scale(1.005); }
-  .drop input[type=file] {
-    position: absolute; inset: 0; opacity: 0; cursor: pointer;
-    /* keep click-through but allow keyboard via label */
-  }
-  .drop .icon { font-size: 28px; line-height: 1; margin-bottom: 8px; opacity: .8; }
-  .drop .label { font-size: 14px; font-weight: 500; }
-  .drop .sub { font-size: 12px; color: var(--fg-2); font-family: var(--mono); margin-top: 4px; }
+  /* table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; color: var(--fg-2); font-weight: 500;
+       font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+       border-bottom: 1px solid var(--line); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .empty { padding: 30px; text-align: center; color: var(--fg-3); font-family: var(--mono); font-size: 12px; }
 
-  .file-list { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; }
-  .file-list:empty { margin: 0; }
-  .file-list li {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 12px; background: var(--bg-2);
-    border: 1px solid var(--line); border-radius: var(--r-sm);
-    font-size: 13px;
-  }
-  .file-list .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-0); }
-  .file-list .fsize { color: var(--fg-2); font-family: var(--mono); font-size: 11px; }
-  .file-list .x {
-    width: 22px; height: 22px; line-height: 20px; text-align: center;
-    color: var(--fg-2); cursor: pointer; border-radius: 4px; font-size: 16px;
-    background: transparent; border: 0; padding: 0;
-  }
-  .file-list .x:hover { color: var(--danger); background: rgba(255,77,109,.1); }
-  .file-list .empty { color: var(--fg-3); font-size: 12px; padding: 4px 0; }
+  .status { display: inline-block; padding: 2px 8px; border-radius: 4px; font-family: var(--mono);
+            font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .status.pending   { background: rgba(108,115,133,.2); color: var(--fg-1); }
+  .status.claimed   { background: rgba(0,212,255,.15); color: var(--accent); }
+  .status.running   { background: rgba(255,106,0,.15); color: var(--accent-2); }
+  .status.done      { background: rgba(110,255,161,.15); color: var(--accent-3); }
+  .status.failed    { background: rgba(255,77,109,.15); color: var(--danger); }
+  .status.canceled  { background: rgba(108,115,133,.15); color: var(--fg-2); }
+  .status.online    { background: rgba(110,255,161,.15); color: var(--accent-3); }
+  .status.offline   { background: rgba(108,115,133,.15); color: var(--fg-2); }
 
-  /* ===== workflows ===== */
-  .workflows {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    gap: 10px;
-  }
-  .wf {
-    text-align: left; cursor: pointer; padding: 12px 14px;
-    background: var(--bg-2); border: 1px solid var(--line);
-    border-radius: var(--r-md); color: var(--fg-0);
-    transition: all .15s; font-family: var(--sans);
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  .wf:hover { border-color: var(--accent); background: var(--bg-3); transform: translateY(-1px); }
-  .wf:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,212,255,.25); }
-  .wf .wf-head { display: flex; align-items: center; gap: 8px; }
-  .wf .wf-icon { font-size: 18px; line-height: 1; }
-  .wf .wf-name { font-size: 13px; font-weight: 600; letter-spacing: .3px; }
-  .wf .wf-desc { font-size: 11px; color: var(--fg-2); }
-  .wf .wf-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-  .wf .wf-tag {
-    font-family: var(--mono); font-size: 10px; color: var(--fg-1);
-    background: var(--bg-0); border: 1px solid var(--line);
-    padding: 2px 6px; border-radius: 3px;
-  }
-  .wf.active {
-    background: linear-gradient(135deg, rgba(0,212,255,.18) 0%, rgba(0,212,255,.06) 100%);
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent), 0 0 16px rgba(0,212,255,.2);
-  }
-  .wf.active .wf-name { color: var(--accent); }
-  .wf.active::after {
-    content: "✓"; position: absolute; top: 6px; right: 8px;
-    color: var(--accent); font-family: var(--mono); font-size: 12px; font-weight: 700;
-  }
-  .wf { position: relative; }
-  .wf-wrap { position: relative; }
-  .wf-wrap .wf { width: 100%; }
-  .wf-del {
-    position: absolute; top: -6px; right: -6px;
-    width: 20px; height: 20px; border-radius: 50%;
-    background: var(--bg-2); border: 1px solid var(--line-strong);
-    color: var(--fg-1); cursor: pointer; padding: 0;
-    font-size: 14px; line-height: 18px; text-align: center;
-    opacity: 0; transition: all .15s;
-  }
-  .wf-wrap:hover .wf-del { opacity: 1; }
-  .wf-del:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
-  .wf-foot {
-    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
-    display: flex; align-items: center; gap: 10px;
-  }
-  .wf-foot .btn { padding: 6px 12px; font-size: 12px; }
-  .wf-clear {
-    font-family: var(--mono); font-size: 11px; color: var(--fg-2);
-    cursor: pointer; padding: 4px 8px;
-  }
-  .wf-clear:hover { color: var(--fg-0); }
-  .wf-clear:empty, .wf-clear[hidden] { display: none; }
+  .progress-bar { height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+  .progress-bar > div { height: 100%; background: var(--accent); transition: width .4s; }
 
-  /* ===== form ===== */
-  .opt-group { margin-bottom: 18px; }
-  .opt-group:last-child { margin-bottom: 0; }
-  .opt-group .gtitle {
-    font-family: var(--mono); font-size: 11px; color: var(--fg-2);
-    text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 10px;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .opt-group .gtitle::before { content: ""; width: 4px; height: 12px; background: var(--accent); border-radius: 1px; }
-  .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 14px; }
-  .opt {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 6px 10px; background: var(--bg-2); border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-  }
-  .opt label { font-size: 12px; color: var(--fg-1); cursor: pointer; }
-  .opt input[type=text], .opt input[type=number] {
-    background: var(--bg-0); border: 1px solid var(--line-strong);
-    color: var(--fg-0); padding: 5px 8px; border-radius: var(--r-sm);
-    font-family: var(--mono); font-size: 12px; width: 90px;
-  }
-  .opt input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,212,255,.15); }
-  .opt input[type=text] { width: 130px; }
-  .opt-pair { display: flex; align-items: center; gap: 4px; }
-  .opt-pair input { width: 70px; }
-  .opt-pair .x { color: var(--fg-3); font-family: var(--mono); }
-  .opt-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .opt-check input { appearance: none; -webkit-appearance: none; width: 36px; height: 20px; border-radius: 12px; background: var(--bg-0); border: 1px solid var(--line-strong); position: relative; cursor: pointer; transition: all .15s; }
-  .opt-check input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--fg-2); transition: all .15s; }
-  .opt-check input:checked { background: rgba(0,212,255,.15); border-color: var(--accent); }
-  .opt-check input:checked::after { left: 18px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-
-  /* ===== buttons ===== */
   .btn {
-    display: inline-flex; align-items: center; gap: 8px;
+    display: inline-flex; align-items: center; gap: 6px;
     background: var(--accent); color: #0a0b0e; border: 0;
-    padding: 10px 20px; border-radius: var(--r-sm); cursor: pointer;
-    font-weight: 600; font-size: 13px; font-family: var(--sans);
-    transition: all .15s; box-shadow: 0 0 0 0 rgba(0,212,255,.4);
+    padding: 6px 14px; border-radius: var(--r-sm); cursor: pointer;
+    font-weight: 600; font-size: 12px; font-family: var(--sans);
+    transition: all .15s;
   }
-  .btn:hover:not(:disabled) { background: #1ddfff; box-shadow: 0 0 16px rgba(0,212,255,.4); }
-  .btn:disabled { background: var(--bg-3); color: var(--fg-3); cursor: not-allowed; box-shadow: none; }
-  .btn.secondary {
-    background: transparent; color: var(--fg-1); border: 1px solid var(--line-strong);
-  }
+  .btn:hover:not(:disabled) { background: #1ddfff; }
+  .btn:disabled { background: var(--bg-3); color: var(--fg-3); cursor: not-allowed; }
+  .btn.secondary { background: transparent; color: var(--fg-1); border: 1px solid var(--line-strong); }
   .btn.secondary:hover:not(:disabled) { color: var(--fg-0); border-color: var(--accent); background: rgba(0,212,255,.05); }
   .btn.danger { color: var(--danger); border-color: rgba(255,77,109,.3); }
   .btn.danger:hover:not(:disabled) { background: rgba(255,77,109,.1); border-color: var(--danger); }
-  .btn .kbd { font-family: var(--mono); font-size: 10px; opacity: .7; }
+  .btn.small { padding: 4px 10px; font-size: 11px; }
 
-  .actions-row { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
-  .status-text { font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
-  .status-text.ok { color: var(--accent-3); }
-  .status-text.err { color: var(--danger); }
+  .row-actions { display: flex; gap: 6px; }
 
-  /* ===== jobs panel ===== */
-  .jobs-list { display: flex; flex-direction: column; gap: 10px; }
-  .jobs-empty {
-    padding: 40px 20px; text-align: center; color: var(--fg-3);
-    font-family: var(--mono); font-size: 12px; letter-spacing: 1px;
-    border: 1px dashed var(--line); border-radius: var(--r-md);
+  /* token modal */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    display: none; align-items: center; justify-content: center; z-index: 1000;
   }
-  .job {
-    border: 1px solid var(--line); border-radius: var(--r-md);
-    background: var(--bg-2); overflow: hidden;
-    transition: border-color .15s;
+  .modal-bg.active { display: flex; }
+  .modal {
+    background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-lg);
+    padding: 24px; max-width: 540px; width: 90%;
   }
-  .job:hover { border-color: var(--line-strong); }
-  .job.running { border-color: rgba(255,106,0,.4); box-shadow: 0 0 0 1px rgba(255,106,0,.1); }
-  .job.success { border-color: rgba(110,255,161,.3); }
-  .job.failed  { border-color: rgba(255,77,109,.4); }
-  .job .head {
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 14px; cursor: pointer;
+  .modal h3 { margin-bottom: 12px; font-size: 16px; }
+  .modal p { color: var(--fg-1); font-size: 13px; margin-bottom: 8px; }
+  .modal .token-box {
+    background: var(--bg-0); border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm); padding: 10px;
+    font-family: var(--mono); font-size: 12px; word-break: break-all;
+    color: var(--accent-3);
   }
-  .job .head:hover { background: rgba(255,255,255,.02); }
-  .job .glyph {
-    width: 28px; height: 28px; display: grid; place-items: center;
-    border-radius: 50%; font-family: var(--mono); font-weight: 700; font-size: 14px;
-    background: var(--bg-3); color: var(--fg-1); flex-shrink: 0;
-  }
-  .job.queued  .glyph { background: rgba(108,115,133,.2); color: var(--fg-1); }
-  .job.running .glyph { background: rgba(255,106,0,.15); color: var(--accent-2); animation: pulse 1.4s ease-in-out infinite; }
-  .job.success .glyph { background: rgba(110,255,161,.15); color: var(--accent-3); }
-  .job.failed  .glyph { background: rgba(255,77,109,.15); color: var(--danger); }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
-  .job .body { flex: 1; min-width: 0; }
-  .job .name { font-size: 14px; font-weight: 500; color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .job .meta { font-family: var(--mono); font-size: 11px; color: var(--fg-2); margin-top: 2px; }
-  .job .meta .id { color: var(--fg-3); }
-  .job .status-tag {
-    font-family: var(--mono); font-size: 10px; letter-spacing: 1.2px;
-    text-transform: uppercase; padding: 3px 8px; border-radius: 4px;
-    background: var(--bg-3); color: var(--fg-1); flex-shrink: 0;
-  }
-  .job.queued  .status-tag { color: var(--fg-1); }
-  .job.running .status-tag { color: var(--accent-2); background: rgba(255,106,0,.12); }
-  .job.success .status-tag { color: var(--accent-3); background: rgba(110,255,161,.12); }
-  .job.failed  .status-tag { color: var(--danger); background: rgba(255,77,109,.12); }
+  .modal .warn { color: var(--accent-2); font-size: 12px; margin-top: 8px; }
 
-  .job .progress {
-    height: 3px; background: var(--bg-3); position: relative; overflow: hidden;
-  }
-  .job .progress .bar {
-    height: 100%; background: var(--accent); width: 0%;
-    transition: width .4s ease;
-  }
-  .job.running .progress .bar {
-    background: var(--accent-2);
-    width: 100%; animation: indet 1.6s ease-in-out infinite;
-  }
-  .job.success .progress .bar { background: var(--accent-3); width: 100%; }
-  .job.failed  .progress .bar { background: var(--danger); width: 100%; }
-  .job.queued   .progress .bar { width: 0%; }
-  @keyframes indet {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-  }
-
-  .job .details {
-    border-top: 1px solid var(--line); padding: 12px 14px;
-    background: var(--bg-1); display: none;
-  }
-  .job.expanded .details { display: block; }
-  .job .log {
-    font-family: var(--mono); font-size: 11px; color: var(--fg-1);
-    background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-sm);
-    padding: 8px 10px; max-height: 200px; overflow: auto;
-    white-space: pre-wrap; word-break: break-all;
-  }
-  .job .log:empty::before { content: "(暂无日志)"; color: var(--fg-3); }
-  .job .row-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-  .job .err-msg {
-    color: var(--danger); font-family: var(--mono); font-size: 11px;
-    background: rgba(255,77,109,.08); padding: 6px 8px; border-radius: var(--r-sm);
-    margin-bottom: 8px;
-  }
-
-  /* ===== toast ===== */
-  .toast-stack { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+  /* toast */
+  .toast-stack { position: fixed; top: 20px; right: 20px; z-index: 1100; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
   .toast {
     background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--line);
     border-left: 3px solid var(--accent); border-radius: var(--r-sm);
     padding: 10px 14px; font-size: 13px;
-    box-shadow: var(--shadow-2);
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
     animation: slide-in .25s ease;
   }
   .toast.error { border-left-color: var(--danger); }
   .toast.success { border-left-color: var(--accent-3); }
   .toast.warn { border-left-color: var(--accent-2); }
   @keyframes slide-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-  .toast.fadeout { animation: slide-out .2s ease forwards; }
-  @keyframes slide-out { to { transform: translateX(20px); opacity: 0; } }
 
-  /* ===== footer ===== */
-  .foot {
-    margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line);
-    color: var(--fg-3); font-size: 11px; font-family: var(--mono);
-    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-  }
-
-  /* small utilities */
-  .row { display: flex; gap: 10px; align-items: center; }
-  .spacer { flex: 1; }
+  .foot { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--fg-3); font-size: 11px; font-family: var(--mono); text-align: center; }
   .mono { font-family: var(--mono); }
   .dim { color: var(--fg-2); }
+  .small { font-size: 11px; }
 </style>
 </head>
 <body>
 <div class="app">
-
   <header class="topbar">
     <div class="brand">
       <div class="logo">C</div>
       <div>
         <h1>capcut-draft</h1>
-        <small>数字人 + B-roll + ASR 字幕 → 剪映草稿</small>
+        <small>数字人 + B-roll + ASR 字幕 → 剪映草稿 · C/S 架构</small>
       </div>
     </div>
     <div class="meta">
+      <span id="me-name" class="mono"></span>
       <a href="/docs" target="_blank" rel="noopener">API DOCS</a>
-      <span>v0.1.0</span>
+      <a href="#" id="btn-logout" title="退出登录">退出</a>
     </div>
   </header>
 
-  <div class="grid">
-    <!-- ===== 左列：上传 + 配置 ===== -->
-    <div>
-      <!-- Step 0: 快捷工作流 -->
-      <section class="card">
-        <div class="card-head">
-          <div>
-            <span class="num star">★</span>
-            <h2>快捷工作流</h2>
-          </div>
-          <span class="hint">点一下套用 · 可继续微调</span>
-        </div>
-        <div class="card-body">
-          <div class="workflows" id="workflows">
-            <div class="jobs-empty">正在加载工作流…</div>
-          </div>
-          <div class="wf-foot">
-            <span class="wf-clear" id="wf-clear" hidden>× 清除已选工作流</span>
-            <span class="spacer"></span>
-            <button class="btn secondary" id="wf-save" type="button" title="把当前参数另存为新工作流">+ 保存当前参数为新工作流</button>
-          </div>
-        </div>
-      </section>
+  <div class="privacy-banner">
+    🔒 <strong>零缓存原则：</strong>所有数字人视频、B-roll 素材、生成的草稿都<strong>不出员工本机</strong>。
+    云端服务端只存：路径引用 + 文件大小/时长 + 任务状态 + 错误日志。
+    后台每 1h 自动清 7 天前的旧上传/zip、30 天前的旧任务日志、30 天没心跳的客户端标记离线。
+  </div>
 
-      <!-- Step 1: 主视频 -->
-      <section class="card">
-        <div class="card-head">
-          <div>
-            <span class="num">01</span>
-            <h2>数字人主视频</h2>
-          </div>
-          <span class="hint" id="hint-main">需要 1 个</span>
-        </div>
-        <div class="card-body">
-          <label class="drop" id="drop-main" tabindex="0">
-            <input type="file" id="file-main" accept="video/*">
-            <div class="icon">▶</div>
-            <div class="label">点击选择 / 拖入视频</div>
-            <div class="sub">MP4 · MOV · MKV · AVI · WEBM</div>
-          </label>
-          <ul class="file-list" id="list-main"></ul>
-        </div>
-      </section>
+  <div class="tabs">
+    <button class="tab active" data-tab="tasks">📋 任务 <span class="badge" id="badge-tasks">0</span></button>
+    <button class="tab" data-tab="clients">💻 客户端 <span class="badge" id="badge-clients">0</span></button>
+    <button class="tab" data-tab="users" id="tab-users" hidden>👥 用户 <span class="badge" id="badge-users">0</span></button>
+  </div>
 
-      <!-- Step 2: B-roll -->
-      <section class="card">
-        <div class="card-head">
-          <div>
-            <span class="num">02</span>
-            <h2>B-roll 素材</h2>
-          </div>
-          <span class="hint" id="hint-broll">需要 ≥ 1 个</span>
+  <!-- ============ Tab: Tasks ============ -->
+  <div class="tab-panel active" data-panel="tasks">
+    <div class="card">
+      <div class="card-head">
+        <h2>任务列表</h2>
+        <div class="row-actions">
+          <select id="filter-status" class="btn secondary small" style="padding: 4px 10px;">
+            <option value="">全部状态</option>
+            <option value="pending">pending</option>
+            <option value="claimed">claimed</option>
+            <option value="running">running</option>
+            <option value="done">done</option>
+            <option value="failed">failed</option>
+            <option value="canceled">canceled</option>
+          </select>
+          <button class="btn" onclick="openNewTaskModal()">+ 新建任务</button>
         </div>
-        <div class="card-body">
-          <label class="drop" id="drop-broll" tabindex="0">
-            <input type="file" id="file-broll" accept="video/*" multiple>
-            <div class="icon">▦</div>
-            <div class="label">点击选择 / 拖入多个</div>
-            <div class="sub">穿插素材，越多越不容易重复</div>
-          </label>
-          <ul class="file-list" id="list-broll"></ul>
-        </div>
-      </section>
-
-      <!-- Step 3: 选项 -->
-      <section class="card">
-        <div class="card-head">
-          <div>
-            <span class="num">03</span>
-            <h2>处理参数</h2>
-          </div>
-        </div>
-        <div class="card-body">
-
-          <div class="opt-group">
-            <div class="gtitle">基础</div>
-            <div class="opts">
-              <div class="opt">
-                <label for="opt-name">草稿名</label>
-                <input type="text" id="opt-name" value="AI合成">
-              </div>
-            </div>
-          </div>
-
-          <div class="opt-group">
-            <div class="gtitle">切点策略</div>
-            <div class="opts">
-              <div class="opt">
-                <label for="opt-pause">停顿阈值 (秒)</label>
-                <input type="number" id="opt-pause" value="0.6" step="0.1" min="0">
-              </div>
-              <div class="opt">
-                <label for="opt-mincut">最小切点间隔 (秒)</label>
-                <input type="number" id="opt-mincut" value="2.5" step="0.1" min="0">
-              </div>
-              <div class="opt">
-                <label for="opt-maxcuts">最多切点数</label>
-                <input type="number" id="opt-maxcuts" placeholder="不限" min="1">
-              </div>
-              <div class="opt">
-                <label for="opt-brolldur">B-roll 停留 (秒)</label>
-                <input type="number" id="opt-brolldur" value="2.5" step="0.1" min="0.1">
-              </div>
-            </div>
-          </div>
-
-          <div class="opt-group">
-            <div class="gtitle">输出</div>
-            <div class="opts">
-              <div class="opt">
-                <label>画布</label>
-                <div class="opt-pair">
-                  <input type="number" id="opt-w" value="1080" min="1" aria-label="宽度">
-                  <span class="x">×</span>
-                  <input type="number" id="opt-h" value="1920" min="1" aria-label="高度">
-                </div>
-              </div>
-              <div class="opt">
-                <label for="opt-fps">FPS</label>
-                <input type="number" id="opt-fps" value="30" min="1" max="120">
-              </div>
-            </div>
-          </div>
-
-          <div class="opt-group">
-            <div class="gtitle">开关</div>
-            <div class="opts">
-              <div class="opt">
-                <label for="opt-subs" class="opt-check">
-                  <input type="checkbox" id="opt-subs" checked>
-                  <span>写字幕</span>
-                </label>
-              </div>
-              <div class="opt">
-                <label for="opt-skipasr" class="opt-check">
-                  <input type="checkbox" id="opt-skipasr">
-                  <span>跳过 ASR（用固定切点）</span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div class="actions-row">
-            <button class="btn" id="btn-start" disabled>开始处理</button>
-            <span class="status-text" id="status"></span>
-            <span class="spacer"></span>
-            <button class="btn secondary" id="btn-reset" type="button">清空</button>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <!-- ===== 右列：任务 ===== -->
-    <div>
-      <section class="card">
-        <div class="card-head">
-          <div>
-            <span class="num">04</span>
-            <h2>任务</h2>
-          </div>
-          <span class="hint" id="jobs-count">0 / 0</span>
-        </div>
-        <div class="card-body">
-          <div id="jobs" class="jobs-list">
-            <div class="jobs-empty">暂无任务 · 上传后点「开始处理」</div>
-          </div>
-        </div>
-      </section>
+      </div>
+      <div class="card-body" style="padding: 0">
+        <table id="tasks-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>工作流</th>
+              <th>状态</th>
+              <th>主视频</th>
+              <th>B-roll</th>
+              <th>进度</th>
+              <th>创建</th>
+              <th>结果</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tasks-tbody">
+            <tr><td colspan="9" class="empty">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <div class="foot">
-    <span>capcut-draft · 由 pyJianYingDraft + FunASR 驱动</span>
-    <span class="mono">小马 ♥ 自动化</span>
+  <!-- ============ Tab: Clients ============ -->
+  <div class="tab-panel" data-panel="clients">
+    <div class="card">
+      <div class="card-head">
+        <h2>客户端（员工机器）</h2>
+        <div class="row-actions">
+          <label class="btn secondary small">
+            <input type="checkbox" id="filter-online-only" style="margin-right:6px;"> 只看在线
+          </label>
+          <button class="btn" onclick="openRegisterClientModal()">+ 注册新客户端</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding: 0">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>名称</th>
+              <th>本机名</th>
+              <th>Owner</th>
+              <th>状态</th>
+              <th>版本</th>
+              <th>最后心跳</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="clients-tbody">
+            <tr><td colspan="8" class="empty">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Tab: Users ============ -->
+  <div class="tab-panel" data-panel="users">
+    <div class="card">
+      <div class="card-head">
+        <h2>用户（仅管理员）</h2>
+        <button class="btn" onclick="openNewUserModal()">+ 新建用户</button>
+      </div>
+      <div class="card-body" style="padding: 0">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>用户名</th>
+              <th>邮箱</th>
+              <th>角色</th>
+              <th>创建</th>
+              <th>最后登录</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="7" class="empty">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">capcut-draft · C/S 架构 · 云端不缓存任何文件本体</div>
+</div>
+
+<!-- ============ Modals ============ -->
+
+<!-- 注册客户端：返回明文 token（只显示一次） -->
+<div class="modal-bg" id="modal-client-token">
+  <div class="modal">
+    <h3>🔑 客户端 Token</h3>
+    <p>复制下面这段 token，写到员工机器的 <code class="mono">config/client.yaml</code> 的 <code class="mono">client_token</code> 字段。</p>
+    <p style="color: var(--danger); font-weight: 600;">⚠️ 这段 token 只显示一次，关闭后无法找回。</p>
+    <div class="token-box" id="new-client-token"></div>
+    <div class="row-actions" style="margin-top: 12px; justify-content: flex-end;">
+      <button class="btn secondary" onclick="document.getElementById('modal-client-token').classList.remove('active')">我已保存</button>
+      <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('new-client-token').textContent); toast('已复制到剪贴板', 'success');">📋 复制</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建任务：选主视频 + B-roll -->
+<div class="modal-bg" id="modal-new-task">
+  <div class="modal" style="max-width: 720px;">
+    <h3>📋 新建任务</h3>
+    <p>主视频和 B-roll 都从已注册的资产里选（资产是员工机器本地扫盘后上报的路径引用）。</p>
+    <div style="margin-top: 12px;">
+      <div style="margin-bottom: 12px;">
+        <label class="small dim" style="display:block; margin-bottom: 4px;">主视频（数字人/口播）</label>
+        <select id="new-task-main" class="btn secondary" style="width: 100%; padding: 8px;">
+          <option value="">-- 请先选主视频 --</option>
+        </select>
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label class="small dim" style="display:block; margin-bottom: 4px;">B-roll 素材（可多选，Ctrl/Shift）</label>
+        <select id="new-task-broll" multiple class="btn secondary" style="width: 100%; padding: 8px; height: 120px;">
+        </select>
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label class="small dim" style="display:block; margin-bottom: 4px;">工作流</label>
+        <select id="new-task-wf" class="btn secondary" style="width: 100%; padding: 8px;">
+          <option value="default">默认参数</option>
+        </select>
+      </div>
+    </div>
+    <div class="row-actions" style="margin-top: 12px; justify-content: flex-end;">
+      <button class="btn secondary" onclick="document.getElementById('modal-new-task').classList.remove('active')">取消</button>
+      <button class="btn" onclick="submitNewTask()">提交</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建用户 -->
+<div class="modal-bg" id="modal-new-user">
+  <div class="modal">
+    <h3>👤 新建用户</h3>
+    <div style="margin-top: 12px;">
+      <div style="margin-bottom: 12px;">
+        <label class="small dim" style="display:block; margin-bottom: 4px;">用户名</label>
+        <input type="text" id="new-user-name" class="btn secondary" style="width: 100%; padding: 8px; text-align: left;">
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label class="small dim" style="display:block; margin-bottom: 4px;">密码（≥6 位）</label>
+        <input type="password" id="new-user-pwd" class="btn secondary" style="width: 100%; padding: 8px; text-align: left;">
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label class="small dim" style="display:block; margin-bottom: 4px;">邮箱（可选）</label>
+        <input type="email" id="new-user-email" class="btn secondary" style="width: 100%; padding: 8px; text-align: left;">
+      </div>
+      <div>
+        <label class="opt-check">
+          <input type="checkbox" id="new-user-admin">
+          <span>管理员</span>
+        </label>
+      </div>
+    </div>
+    <div class="row-actions" style="margin-top: 12px; justify-content: flex-end;">
+      <button class="btn secondary" onclick="document.getElementById('modal-new-user').classList.remove('active')">取消</button>
+      <button class="btn" onclick="submitNewUser()">提交</button>
+    </div>
   </div>
 </div>
 
@@ -562,601 +382,376 @@
 <script>
 'use strict';
 
-const $ = (sel, root = document) => root.querySelector(sel);
-const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
-// ============== state ==============
-const state = {
-  main: [],     // [{id, name, size}]
-  broll: [],    // [{id, name, size}]
-  jobs: new Map(),  // id -> job
-  pollTimer: null,
-};
-
-// ============== toast ==============
-const toasts = $('#toasts');
-function toast(msg, type = 'info', ms = 3200) {
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.textContent = msg;
-  toasts.appendChild(el);
-  setTimeout(() => {
-    el.classList.add('fadeout');
-    setTimeout(() => el.remove(), 220);
-  }, ms);
-}
-
-// ============== format ==============
-function fmtSize(bytes) {
-  if (!bytes && bytes !== 0) return '';
-  const u = ['B', 'KB', 'MB', 'GB'];
-  let i = 0, n = bytes;
-  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return `${n.toFixed(n >= 10 ? 0 : 1)} ${u[i]}`;
-}
-function basename(path) {
-  if (!path) return '';
-  const m = path.match(/[^\\/]+$/);
-  return m ? m[0] : path;
-}
-
-// ============== workflows ==============
-// 工作流从后端 /api/workflows 加载（内置 6 个 + 用户自加的）。每个工作流是
-// "参数预设"，点击后套用到底下的选项；用户改任意值后高亮自动消失。
-//
-// 数据形态（每个 wf）：
-//   { id, name, icon, description, tags, builtin, options }
-// 其中 options 字段对应 PARAM_INPUT 里的 6 个 key。
-
-let WORKFLOWS = {};        // id -> wf
-let WF_ORDER = [];         // 渲染顺序（内置在前，用户在后）
-let activeWorkflow = null; // id of currently applied workflow
-
-const PARAM_INPUT = {
-  pause_threshold: 'opt-pause',
-  min_cut_interval: 'opt-mincut',
-  max_cuts: 'opt-maxcuts',
-  broll_duration: 'opt-brolldur',
-  add_subtitles: 'opt-subs',
-  skip_asr: 'opt-skipasr',
-};
-
-const PARAM_DEFAULT = {
-  pause_threshold: 0.6, min_cut_interval: 2.5, max_cuts: null,
-  broll_duration: 2.5, add_subtitles: true, skip_asr: false,
-};
-
-async function loadWorkflows() {
-  try {
-    const r = await fetch('/api/workflows');
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    WORKFLOWS = {};
-    WF_ORDER = [];
-    for (const w of (data.workflows || [])) {
-      WORKFLOWS[w.id] = w;
-      WF_ORDER.push(w.id);
+// ============== 鉴权 wrapper ==============
+(function() {
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(url, opts) {
+    opts = opts || {};
+    const u = typeof url === 'string' ? url : url.url;
+    const token = localStorage.getItem('capcut_token');
+    if (token) {
+      const h = new Headers(opts.headers || {});
+      if (!h.has('Authorization')) h.set('Authorization', 'Bearer ' + token);
+      opts.headers = h;
     }
-    renderWorkflows();
-  } catch (e) {
-    toast(`加载工作流失败: ${e.message}`, 'error', 5000);
-  }
-}
-
-function renderWorkflows() {
-  const container = $('#workflows');
-  if (WF_ORDER.length === 0) {
-    container.innerHTML = '<div class="jobs-empty">没有可用的工作流</div>';
-    return;
-  }
-  container.innerHTML = WF_ORDER.map(id => {
-    const w = WORKFLOWS[id];
-    const safeName = escapeHtml(w.name);
-    const safeDesc = escapeHtml(w.description || '');
-    const tags = (w.tags || []).map(t => `<span class="wf-tag">${escapeHtml(t)}</span>`).join('');
-    const userDel = !w.builtin
-      ? `<button class="wf-del" data-del="${id}" title="删除" aria-label="删除">×</button>`
-      : '';
-    return `
-      <div class="wf-wrap" data-wf="${id}">
-        <button class="wf" data-wf="${id}" type="button">
-          <div class="wf-head"><span class="wf-icon">${escapeHtml(w.icon || '📌')}</span><span class="wf-name">${safeName}</span></div>
-          <div class="wf-desc">${safeDesc || (w.builtin ? '' : '自定义')}</div>
-          ${tags ? `<div class="wf-tags">${tags}</div>` : ''}
-        </button>
-        ${userDel}
-      </div>
-    `;
-  }).join('');
-}
-
-function applyWorkflow(id) {
-  const wf = WORKFLOWS[id];
-  if (!wf) return;
-  for (const [key, val] of Object.entries(wf.options || {})) {
-    const inputId = PARAM_INPUT[key];
-    if (!inputId) continue;
-    const el = $('#' + inputId);
-    if (!el) continue;
-    if (el.type === 'checkbox') el.checked = !!val;
-    else el.value = (val === null || val === undefined) ? '' : val;
-  }
-  activeWorkflow = id;
-  $$('.wf').forEach(b => b.classList.toggle('active', b.dataset.wf === id));
-  $('#wf-clear').hidden = false;
-  toast(`已套用「${wf.name}」`, 'success');
-}
-
-function clearWorkflow() {
-  activeWorkflow = null;
-  for (const [key, val] of Object.entries(PARAM_DEFAULT)) {
-    const inputId = PARAM_INPUT[key];
-    if (!inputId) continue;
-    const el = $('#' + inputId);
-    if (!el) continue;
-    if (el.type === 'checkbox') el.checked = !!val;
-    else el.value = (val === null || val === undefined) ? '' : val;
-  }
-  $$('.wf').forEach(b => b.classList.remove('active'));
-  $('#wf-clear').hidden = true;
-  toast('已清除，回到默认参数', 'info');
-}
-
-async function saveCurrentAsWorkflow() {
-  const name = prompt('给这个工作流起个名字（≤32 字）:', '我的新工作流');
-  if (name === null) return;
-  const trimmed = name.trim();
-  if (!trimmed) { toast('名字不能空', 'warn'); return; }
-  const body = {
-    name: trimmed,
-    icon: '📌',
-    description: '用户自建',
-    tags: [],
-    options: collectCurrentOptions(),
-  };
-  try {
-    const r = await fetch('/api/workflows', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    return _origFetch(url, opts).then(r => {
+      const isAuthApi = u.includes('/api/auth/login') || u.includes('/api/auth/refresh');
+      if (r.status === 401 && !isAuthApi && !window.location.pathname.startsWith('/login')) {
+        localStorage.removeItem('capcut_token');
+        localStorage.removeItem('capcut_refresh');
+        localStorage.removeItem('capcut_user');
+        window.location.href = '/login';
+      }
+      return r;
     });
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      throw new Error(j.detail || `HTTP ${r.status}`);
-    }
-    const saved = await r.json();
-    toast(`已保存「${saved.name}」`, 'success');
-    await loadWorkflows();
-    // 自动套用刚保存的那个
-    applyWorkflow(saved.id);
-  } catch (e) {
-    toast(`保存失败: ${e.message}`, 'error');
-  }
-}
-
-async function deleteWorkflow(id) {
-  const w = WORKFLOWS[id];
-  if (!w) return;
-  if (!confirm(`确认删除「${w.name}」？`)) return;
-  try {
-    const r = await fetch(`/api/workflows/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      throw new Error(j.detail || `HTTP ${r.status}`);
-    }
-    toast('已删除', 'success');
-    if (activeWorkflow === id) clearWorkflow();
-    await loadWorkflows();
-  } catch (e) {
-    toast(`删除失败: ${e.message}`, 'error');
-  }
-}
-
-function collectCurrentOptions() {
-  return {
-    pause_threshold: parseFloat($('#opt-pause').value) || PARAM_DEFAULT.pause_threshold,
-    min_cut_interval: parseFloat($('#opt-mincut').value) || PARAM_DEFAULT.min_cut_interval,
-    max_cuts: $('#opt-maxcuts').value ? parseInt($('#opt-maxcuts').value, 10) : null,
-    broll_duration: parseFloat($('#opt-brolldur').value) || PARAM_DEFAULT.broll_duration,
-    add_subtitles: $('#opt-subs').checked,
-    skip_asr: $('#opt-skipasr').checked,
   };
-}
-
-$('#workflows').addEventListener('click', (e) => {
-  // 先看是不是删除按钮
-  const delBtn = e.target.closest('[data-del]');
-  if (delBtn) { e.stopPropagation(); deleteWorkflow(delBtn.dataset.del); return; }
-  const btn = e.target.closest('.wf');
-  if (!btn) return;
-  applyWorkflow(btn.dataset.wf);
-});
-$('#wf-clear').addEventListener('click', clearWorkflow);
-$('#wf-save').addEventListener('click', saveCurrentAsWorkflow);
-
-// 用户手动改任意参数 → 取消工作流高亮
-['opt-pause', 'opt-mincut', 'opt-maxcuts', 'opt-brolldur', 'opt-subs', 'opt-skipasr'].forEach(id => {
-  const el = $('#' + id);
-  if (!el) return;
-  const evt = el.type === 'checkbox' ? 'change' : 'input';
-  el.addEventListener(evt, () => {
-    if (activeWorkflow) {
-      activeWorkflow = null;
-      $$('.wf').forEach(b => b.classList.remove('active'));
-      $('#wf-clear').hidden = true;
+  if (!localStorage.getItem('capcut_token')) window.location.href = '/login';
+  let isAdmin = false;
+  try {
+    const u = JSON.parse(localStorage.getItem('capcut_user') || '{}');
+    isAdmin = !!u.is_admin;
+    if (u.username) {
+      const el = document.getElementById('me-name');
+      if (el) el.textContent = (isAdmin ? '★ ' : '') + u.username;
+    }
+  } catch (e) {}
+  if (isAdmin) document.getElementById('tab-users').hidden = false;
+  document.getElementById('btn-logout')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (confirm('确认退出登录？')) {
+      localStorage.removeItem('capcut_token');
+      localStorage.removeItem('capcut_refresh');
+      localStorage.removeItem('capcut_user');
+      window.location.href = '/login';
     }
   });
-});
+})();
 
-// 启动时加载
-loadWorkflows();
-
-
-async function uploadFile(file, kind) {
-  // kind: 'main' | 'broll'
-  const url = kind === 'main' ? '/api/upload-main' : '/api/upload-broll';
-  const fd = new FormData();
-  if (kind === 'main') {
-    fd.append('file', file);
-  } else {
-    fd.append('files', file);
-  }
-  const r = await fetch(url, { method: 'POST', body: fd });
-  if (!r.ok) {
-    const txt = await r.text();
-    throw new Error(txt || `HTTP ${r.status}`);
-  }
-  return r.json();
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+function toast(msg, type='info', ms=3000) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type; el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => el.remove(), ms);
+}
+function basename(p) { if (!p) return ''; const m = p.match(/[^\\/]+$/); return m ? m[0] : p; }
+function fmtTime(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function fmtAgo(iso) {
+  if (!iso) return '从未';
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return s.toFixed(0) + 's 前';
+  if (s < 3600) return (s/60).toFixed(0) + 'm 前';
+  if (s < 86400) return (s/3600).toFixed(0) + 'h 前';
+  return (s/86400).toFixed(0) + 'd 前';
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function renderLists() {
-  const renderOne = (kind) => {
-    const list = $(`#list-${kind}`);
-    const arr = state[kind];
-    $('#hint-' + kind).textContent = kind === 'main'
-      ? (arr.length ? `已选 ${arr.length} 个` : '需要 1 个')
-      : (arr.length ? `已选 ${arr.length} 个` : '需要 ≥ 1 个');
-    if (arr.length === 0) {
-      list.innerHTML = '<li class="empty">尚未选择文件</li>';
+// ============== Tabs ==============
+$$('.tab').forEach(t => t.addEventListener('click', () => {
+  $$('.tab').forEach(x => x.classList.remove('active'));
+  $$('.tab-panel').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  $(`.tab-panel[data-panel="${t.dataset.tab}"]`).classList.add('active');
+  if (t.dataset.tab === 'tasks') refreshTasks();
+  if (t.dataset.tab === 'clients') refreshClients();
+  if (t.dataset.tab === 'users') refreshUsers();
+}));
+
+// ============== Tasks ==============
+let workflowsCache = [];
+
+async function refreshTasks() {
+  try {
+    const status = $('#filter-status').value;
+    const url = '/api/tasks' + (status ? `?status=${status}` : '');
+    const r = await fetch(url);
+    const data = await r.json();
+    const tbody = $('#tasks-tbody');
+    const tasks = data.tasks || [];
+    $('#badge-tasks').textContent = tasks.length;
+    if (tasks.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty">暂无任务</td></tr>';
       return;
     }
-    list.innerHTML = arr.map((f, i) => `
-      <li data-i="${i}">
-        <span class="fname" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
-        <span class="fsize">${fmtSize(f.size)}</span>
-        <button class="x" data-kind="${kind}" data-i="${i}" title="移除" aria-label="移除">×</button>
-      </li>
-    `).join('');
-  };
-  renderOne('main');
-  renderOne('broll');
-  $('#btn-start').disabled = !(state.main.length && state.broll.length);
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-async function handleUpload(file, kind) {
-  if (!file) return;
-  if (!file.type.startsWith('video/') && !/\.(mp4|mov|mkv|avi|webm|m4v)$/i.test(file.name)) {
-    toast(`不支持的格式: ${file.name}`, 'error');
-    return;
-  }
-  try {
-    const data = await uploadFile(file, kind);
-    const id = kind === 'main' ? data.file_id : data.file_ids[0];
-    if (kind === 'main') {
-      // 主视频只保留最新一个
-      state.main = [{ id, name: file.name, size: file.size }];
-    } else {
-      state.broll.push({ id, name: file.name, size: file.size });
-    }
-    renderLists();
-  } catch (e) {
-    toast(`上传失败: ${e.message || e}`, 'error');
-  }
-}
-
-function bindDrop(zoneId, inputId, kind) {
-  const zone = $(zoneId);
-  const input = $(inputId);
-
-  const trigger = () => input.click();
-  zone.addEventListener('click', (e) => {
-    // 防止点删除按钮时也触发 input
-    if (e.target.closest('.file-list')) return;
-    trigger();
-  });
-  zone.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); trigger(); }
-  });
-  input.addEventListener('change', (e) => {
-    for (const f of Array.from(e.target.files)) handleUpload(f, kind);
-    e.target.value = '';  // 允许重复选同一文件
-  });
-  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag'); });
-  zone.addEventListener('dragleave', (e) => {
-    if (e.target === zone) zone.classList.remove('drag');
-  });
-  zone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    zone.classList.remove('drag');
-    for (const f of Array.from(e.dataTransfer.files || [])) handleUpload(f, kind);
-  });
-}
-
-bindDrop('#drop-main', '#file-main', 'main');
-bindDrop('#drop-broll', '#file-broll', 'broll');
-
-// remove a file
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.file-list .x');
-  if (!btn) return;
-  const kind = btn.dataset.kind;
-  const i = parseInt(btn.dataset.i, 10);
-  if (state[kind] && state[kind][i]) {
-    state[kind].splice(i, 1);
-    renderLists();
-  }
-});
-
-// reset all
-$('#btn-reset').addEventListener('click', () => {
-  state.main = []; state.broll = [];
-  renderLists();
-  $('#status').textContent = '';
-});
-
-// ============== start job ==============
-$('#btn-start').addEventListener('click', async () => {
-  if (!state.main.length || !state.broll.length) return;
-  const btn = $('#btn-start');
-  btn.disabled = true;
-  $('#status').textContent = '提交任务…';
-  const body = {
-    name: $('#opt-name').value.trim() || 'AI合成',
-    main_file_id: state.main[0].id,
-    broll_file_ids: state.broll.map(f => f.id),
-    options: {
-      pause_threshold: parseFloat($('#opt-pause').value),
-      min_cut_interval: parseFloat($('#opt-mincut').value),
-      max_cuts: $('#opt-maxcuts').value ? parseInt($('#opt-maxcuts').value, 10) : null,
-      broll_duration: parseFloat($('#opt-brolldur').value),
-      width: parseInt($('#opt-w').value, 10),
-      height: parseInt($('#opt-h').value, 10),
-      fps: parseFloat($('#opt-fps').value),
-      add_subtitles: $('#opt-subs').checked,
-      skip_asr: $('#opt-skipasr').checked,
-    },
-  };
-  try {
-    const r = await fetch('/api/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) {
-      let msg = `HTTP ${r.status}`;
-      try { const j = await r.json(); msg = j.detail || JSON.stringify(j); } catch {}
-      throw new Error(msg);
-    }
-    const j = await r.json();
-    toast(`任务已创建 · ${j.job_id}`, 'success');
-    $('#status').textContent = '';
-    refreshJobs();
-    ensurePolling();
-  } catch (e) {
-    toast(`提交失败: ${e.message}`, 'error');
-    $('#status').textContent = '';
-  } finally {
-    btn.disabled = !(state.main.length && state.broll.length);
-  }
-});
-
-// ============== jobs ==============
-const STATUS_GLYPH = { queued: '◌', running: '◐', success: '✓', failed: '✕' };
-
-function jobHtml(j) {
-  const expanded = j._expanded ? ' expanded' : '';
-  const isFinal = j.status === 'success' || j.status === 'failed';
-  const logText = (j._log || []).join('\n');
-  return `
-    <div class="job ${j.status}${expanded}" data-id="${j.id}">
-      <div class="head">
-        <div class="glyph">${STATUS_GLYPH[j.status] || '?'}</div>
-        <div class="body">
-          <div class="name">${escapeHtml(j.name || '(未命名)')}</div>
-          <div class="meta">
-            <span class="id">${j.id}</span> · 主 ${escapeHtml(basename(j.main_file))} · B-roll ${j.broll_count}
-            ${j._time ? '· ' + j._time : ''}
+    tbody.innerHTML = tasks.map(t => `
+      <tr>
+        <td class="mono">${t.id}</td>
+        <td>${escapeHtml(t.workflow_name || t.workflow_id)}</td>
+        <td><span class="status ${t.status}">${t.status}</span></td>
+        <td class="mono small">${t.main_asset_id ?? '-'}</td>
+        <td class="mono small">${(t.broll_asset_ids || []).length}</td>
+        <td>
+          <div class="small mono">${t.progress ?? 0}%</div>
+          <div class="progress-bar"><div style="width: ${t.progress ?? 0}%"></div></div>
+        </td>
+        <td class="small mono">${fmtTime(t.created_at)}</td>
+        <td class="small mono">${t.result_path ? '✅ ' + basename(t.result_path) : (t.error ? '❌' : '-')}</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn small secondary" onclick="viewTask(${t.id})">查看</button>
+            ${t.status === 'failed' || t.status === 'canceled' ? `<button class="btn small secondary" onclick="retryTask(${t.id})">重试</button>` : ''}
+            ${t.status === 'pending' || t.status === 'claimed' || t.status === 'running'
+              ? `<button class="btn small secondary danger" onclick="cancelTask(${t.id})">取消</button>` : ''}
+            <button class="btn small secondary danger" onclick="deleteTask(${t.id})">删</button>
           </div>
-        </div>
-        <span class="status-tag">${j.status}</span>
-      </div>
-      <div class="progress"><div class="bar"></div></div>
-      <div class="details">
-        ${j.error ? `<div class="err-msg">${escapeHtml(j.error)}</div>` : ''}
-        <div class="log">${escapeHtml(logText)}</div>
-        <div class="row-actions">
-          ${j.status === 'success' ? `<a class="btn secondary" href="/api/jobs/${j.id}/download" download>下载草稿 (.zip)</a>` : ''}
-          <button class="btn secondary" data-act="refresh">刷新日志</button>
-          ${j.status === 'failed' ? `<button class="btn secondary" data-act="retry">重新提交</button>` : ''}
-          <span class="spacer"></span>
-          <button class="btn secondary danger" data-act="del">删除</button>
-        </div>
-      </div>
-    </div>
-  `;
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) { console.error(e); toast('加载任务失败: ' + e.message, 'error'); }
 }
 
-function fmtTime(ts) {
-  if (!ts) return '';
-  const d = new Date(ts * 1000);
-  const pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function fmtDur(start, end) {
-  if (!start) return '';
-  const s = end ? end - start : (Date.now() / 1000 - start);
-  if (s < 60) return `${s.toFixed(0)}s`;
-  return `${Math.floor(s / 60)}m${(s % 60).toFixed(0).padStart(2, '0')}s`;
-}
-
-async function refreshJobs() {
-  let data;
+async function viewTask(id) {
   try {
-    const r = await fetch('/api/jobs');
-    data = await r.json();
-  } catch (e) {
-    console.error('refreshJobs failed', e);
-    return;
-  }
-  // 保留已展开的 job 状态
-  const expandedIds = new Set($$('.job.expanded').map(el => el.dataset.id));
-  const logs = new Map();
-  for (const el of $$('.job')) {
-    const id = el.dataset.id;
-    const log = el.querySelector('.log');
-    if (log) logs.set(id, log.textContent);
-  }
-  // 保留 job 详细日志
-  const detailLogs = new Map(state.jobs);
-
-  const jobs = data.jobs || [];
-  const container = $('#jobs');
-  if (jobs.length === 0) {
-    container.innerHTML = '<div class="jobs-empty">暂无任务 · 上传后点「开始处理」</div>';
-  } else {
-    container.innerHTML = jobs.map(j => {
-      const prev = detailLogs.get(j.id);
-      const j2 = {
-        ...j,
-        _expanded: expandedIds.has(j.id),
-        _log: prev && prev.progress ? prev.progress : [],
-        _time: (j.started_at || j.created_at) ? `${fmtTime(j.created_at)}${j.finished_at ? ' · 用时 ' + fmtDur(j.started_at, j.finished_at) : (j.started_at ? ' · 跑 ' + fmtDur(j.started_at) : '')}` : '',
-      };
-      return jobHtml(j2);
-    }).join('');
-  }
-
-  // 更新内存
-  for (const j of jobs) {
-    if (state.jobs.has(j.id)) {
-      const prev = state.jobs.get(j.id);
-      prev.status = j.status;
-      prev.draft_path = j.draft_path;
-      prev.error = j.error;
-    } else {
-      state.jobs.set(j.id, { ...j, progress: [] });
-    }
-  }
-  // 拉取展开的 job 的详细日志
-  for (const id of expandedIds) {
-    loadJobDetail(id, /*silent*/ true);
-  }
-  // 计数
-  const running = jobs.filter(j => j.status === 'running' || j.status === 'queued').length;
-  $('#jobs-count').textContent = `${running} 运行中 / ${jobs.length} 总数`;
-
-  // 控制轮询
-  if (running > 0) ensurePolling(); else stopPolling();
+    const r = await fetch(`/api/tasks/${id}`);
+    const t = await r.json();
+    const logs = (t.logs || []).map(l => `[${l.level}] ${l.message}`).join('\n');
+    const msg = `任务 #${t.id}\n状态: ${t.status}  进度: ${t.progress ?? 0}%\n` +
+                `主视频: ${t.main_asset_id ?? '-'}\nB-roll: ${(t.broll_asset_ids || []).join(', ')}\n` +
+                `结果: ${t.result_path || '(未完成)'}\n` +
+                (t.error ? `\n❌ 错误: ${t.error}\n` : '') +
+                (logs ? `\n📜 日志:\n${logs}` : '');
+    alert(msg);
+  } catch (e) { toast('查看失败: ' + e.message, 'error'); }
 }
 
-async function loadJobDetail(id, silent = false) {
+async function cancelTask(id) {
+  if (!confirm(`确认取消任务 #${id}？`)) return;
   try {
-    const r = await fetch(`/api/jobs/${id}`);
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
-    state.jobs.set(id, j);
-    const el = $(`.job[data-id="${id}"] .log`);
-    if (el) el.textContent = (j.progress || []).join('\n') || '';
-    if (!silent && (j.status === 'success' || j.status === 'failed')) {
-      refreshJobs();
-    }
-  } catch (e) {
-    if (!silent) toast(`加载失败: ${e.message}`, 'error');
-  }
-}
-
-$('#jobs').addEventListener('click', (e) => {
-  const jobEl = e.target.closest('.job');
-  if (!jobEl) return;
-  const id = jobEl.dataset.id;
-  // 行内按钮
-  const actBtn = e.target.closest('[data-act]');
-  if (actBtn) {
-    e.stopPropagation();
-    const act = actBtn.dataset.act;
-    if (act === 'refresh') loadJobDetail(id);
-    if (act === 'del') deleteJob(id);
-    if (act === 'retry') retryJob(id);
-    return;
-  }
-  // 点击 head 展开/收起
-  if (e.target.closest('.head')) {
-    jobEl.classList.toggle('expanded');
-    if (jobEl.classList.contains('expanded')) loadJobDetail(id, true);
-    return;
-  }
-});
-
-async function deleteJob(id) {
-  if (!confirm('确认删除这个任务？草稿和 zip 也会一起删掉。')) return;
-  try {
-    const r = await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+    const r = await fetch(`/api/tasks/${id}/cancel`, { method: 'POST' });
     if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
-    state.jobs.delete(id);
-    toast('已删除', 'success');
-    refreshJobs();
-  } catch (e) {
-    toast(`删除失败: ${e.message}`, 'error');
-  }
+    toast('已取消', 'success'); refreshTasks();
+  } catch (e) { toast('取消失败: ' + e.message, 'error'); }
+}
+async function retryTask(id) {
+  if (!confirm(`确认重试任务 #${id}？`)) return;
+  try {
+    const r = await fetch(`/api/tasks/${id}/retry`, { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    toast('已重置为 pending，等待客户端领取', 'success'); refreshTasks();
+  } catch (e) { toast('重试失败: ' + e.message, 'error'); }
+}
+async function deleteTask(id) {
+  if (!confirm(`确认删除任务 #${id}？`)) return;
+  try {
+    const r = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    toast('已删除', 'success'); refreshTasks();
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
 }
 
-async function retryJob(id) {
-  const j = state.jobs.get(id);
-  if (!j) return;
-  if (!state.main.length || !state.broll.length) {
-    toast('重试需要先重新选择文件（重启服务后已上传的文件会丢失）', 'warn', 4000);
-    return;
-  }
+$('#filter-status').addEventListener('change', refreshTasks);
+
+async function openNewTaskModal() {
+  // 加载资产
+  try {
+    const r = await fetch('/api/assets?limit=500');
+    const data = await r.json();
+    const assets = data.assets || [];
+    const main = assets.filter(a => a.kind === 'main');
+    const broll = assets.filter(a => a.kind === 'broll');
+    const mSel = $('#new-task-main');
+    mSel.innerHTML = '<option value="">-- 请先选主视频 --</option>' +
+      main.map(a => `<option value="${a.id}">${escapeHtml(a.name)} (${a.path})</option>`).join('');
+    const bSel = $('#new-task-broll');
+    bSel.innerHTML = broll.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+    if (main.length === 0) toast('当前没有可用的主视频（kind=main）— 请确认客户端已扫盘并上报', 'warn', 5000);
+  } catch (e) { toast('加载资产失败: ' + e.message, 'error'); return; }
+  // 加载工作流
+  try {
+    const r = await fetch('/api/workflows');
+    const data = await r.json();
+    workflowsCache = data.workflows || [];
+    const wSel = $('#new-task-wf');
+    wSel.innerHTML = '<option value="">默认参数</option>' +
+      workflowsCache.map(w => `<option value="${escapeHtml(w.id)}">${escapeHtml(w.name)}</option>`).join('');
+  } catch {}
+  $('#modal-new-task').classList.add('active');
+}
+
+async function submitNewTask() {
+  const main = $('#new-task-main').value;
+  const broll = Array.from($('#new-task-broll').selectedOptions).map(o => parseInt(o.value, 10));
+  const wfId = $('#new-task-wf').value;
+  if (!main) { toast('请选主视频', 'warn'); return; }
+  const wf = workflowsCache.find(w => w.id === wfId);
   const body = {
-    name: j.name,
-    main_file_id: state.main[0].id,
-    broll_file_ids: state.broll.map(f => f.id),
-    options: j.options || {},
+    workflow_id: wfId || 'default',
+    workflow_name: wf?.name,
+    main_asset_id: parseInt(main, 10),
+    broll_asset_ids: broll,
+    options: wf?.options || {},
   };
   try {
-    const r = await fetch('/api/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const r = await fetch('/api/tasks', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
     });
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      throw new Error(err.detail || `HTTP ${r.status}`);
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const t = await r.json();
+    toast(`任务 #${t.id} 已创建`, 'success');
+    $('#modal-new-task').classList.remove('active');
+    refreshTasks();
+  } catch (e) { toast('提交失败: ' + e.message, 'error'); }
+}
+
+// ============== Clients ==============
+async function refreshClients() {
+  try {
+    const onlyOnline = $('#filter-online-only').checked;
+    const url = '/api/clients' + (onlyOnline ? '?only_online=true' : '');
+    const r = await fetch(url);
+    const data = await r.json();
+    const clients = data.clients || [];
+    $('#badge-clients').textContent = clients.length;
+    const tbody = $('#clients-tbody');
+    if (clients.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无客户端 · 点右上角"注册新客户端"</td></tr>';
+      return;
     }
-    toast('已重新提交', 'success');
-    refreshJobs();
-    ensurePolling();
-  } catch (e) {
-    toast(`重试失败: ${e.message}`, 'error');
-  }
+    tbody.innerHTML = clients.map(c => `
+      <tr>
+        <td class="mono">${c.id}</td>
+        <td>${escapeHtml(c.name)}</td>
+        <td class="mono small">${escapeHtml(c.hostname)}</td>
+        <td>${escapeHtml(c.owner_username || '(公共池)')}</td>
+        <td><span class="status ${c.is_online ? 'online' : 'offline'}">${c.is_online ? 'online' : 'offline'}</span></td>
+        <td class="mono small">${escapeHtml(c.version || '-')}</td>
+        <td class="small">${fmtAgo(c.last_seen_at)}</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn small secondary" onclick="rotateClientToken(${c.id}, '${escapeHtml(c.name)}')">重置 Token</button>
+            <button class="btn small secondary danger" onclick="deleteClient(${c.id})">删</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) { toast('加载客户端失败: ' + e.message, 'error'); }
+}
+$('#filter-online-only').addEventListener('change', refreshClients);
+
+async function openRegisterClientModal() {
+  const name = prompt('给这台机器起个名字（≤64 字，建议"姓名+机器"，如"小马的剪辑机"）:');
+  if (!name) return;
+  try {
+    const r = await fetch('/api/clients/register', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name.trim()}),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const c = await r.json();
+    $('#new-client-token').textContent = c.client_token;
+    $('#modal-client-token').classList.add('active');
+    refreshClients();
+  } catch (e) { toast('注册失败: ' + e.message, 'error'); }
 }
 
-// ============== polling ==============
-function ensurePolling() {
-  if (state.pollTimer) return;
-  state.pollTimer = setInterval(refreshJobs, 3000);
-}
-function stopPolling() {
-  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+async function rotateClientToken(id, name) {
+  if (!confirm(`确认重置「${name}」的 token？旧 token 立即失效。`)) return;
+  try {
+    const r = await fetch(`/api/clients/${id}/rotate-token`, { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const c = await r.json();
+    $('#new-client-token').textContent = c.client_token;
+    $('#modal-client-token').classList.add('active');
+  } catch (e) { toast('重置失败: ' + e.message, 'error'); }
 }
 
-// 启动时先拉一次
-refreshJobs();
+async function deleteClient(id) {
+  if (!confirm('确认删除这个客户端？该机器将无法再连服务端。')) return;
+  try {
+    const r = await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    toast('已删除', 'success'); refreshClients();
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+// ============== Users ==============
+async function refreshUsers() {
+  try {
+    const r = await fetch('/api/auth/users');
+    const data = await r.json();
+    const users = data.users || [];
+    $('#badge-users').textContent = users.length;
+    const tbody = $('#users-tbody');
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td class="mono">${u.id}</td>
+        <td>${escapeHtml(u.username)} ${u.username === 'xiaoma' ? '<span class="small dim">(内置)</span>' : ''}</td>
+        <td class="small">${escapeHtml(u.email || '-')}</td>
+        <td>${u.is_admin ? '<span class="status online">admin</span>' : '<span class="status offline">user</span>'}</td>
+        <td class="small">${fmtTime(u.created_at)}</td>
+        <td class="small">${fmtTime(u.last_login_at)}</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn small secondary" onclick="resetPwd(${u.id}, '${escapeHtml(u.username)}')">重置密码</button>
+            ${u.username !== 'xiaoma' ? `<button class="btn small secondary danger" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">删</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) { toast('加载用户失败: ' + e.message, 'error'); }
+}
+
+async function resetPwd(uid, uname) {
+  const pwd = prompt(`给「${uname}」设置新密码（≥6 位）:`);
+  if (!pwd) return;
+  if (pwd.length < 6) { toast('密码太短', 'warn'); return; }
+  try {
+    const r = await fetch(`/api/auth/users/${uid}/reset-password`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({new_password: pwd}),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    toast('密码已重置', 'success');
+  } catch (e) { toast('重置失败: ' + e.message, 'error'); }
+}
+
+async function deleteUser(uid, uname) {
+  if (!confirm(`确认删除用户「${uname}」？`)) return;
+  try {
+    const r = await fetch(`/api/auth/users/${uid}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    toast('已删除', 'success'); refreshUsers();
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+function openNewUserModal() {
+  $('#new-user-name').value = '';
+  $('#new-user-pwd').value = '';
+  $('#new-user-email').value = '';
+  $('#new-user-admin').checked = false;
+  $('#modal-new-user').classList.add('active');
+}
+
+async function submitNewUser() {
+  const username = $('#new-user-name').value.trim();
+  const password = $('#new-user-pwd').value;
+  const email = $('#new-user-email').value.trim() || null;
+  const is_admin = $('#new-user-admin').checked;
+  if (!username) { toast('用户名不能空', 'warn'); return; }
+  if (password.length < 6) { toast('密码太短（≥6）', 'warn'); return; }
+  try {
+    const r = await fetch('/api/auth/users', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password, email, is_admin}),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    toast('已创建', 'success');
+    $('#modal-new-user').classList.remove('active');
+    refreshUsers();
+  } catch (e) { toast('创建失败: ' + e.message, 'error'); }
+}
+
+// 启动
+refreshTasks();
+setInterval(refreshTasks, 5000);
 </script>
 </body>
 </html>

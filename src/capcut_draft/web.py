@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import threading
 import time
@@ -23,6 +24,7 @@ from typing import Literal
 
 from fastapi import (
     BackgroundTasks,
+    Depends,
     FastAPI,
     File,
     HTTPException,
@@ -33,6 +35,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import auth as auth_mod
+from . import db_models
+from . import web_assets, web_clients, web_tasks
 from .cli import _process_one  # 复用 cli 的处理函数
 
 log = logging.getLogger(__name__)
@@ -113,19 +118,136 @@ def _setup_logging() -> None:
     )
 
 
+# -------- 云端定期清理（用户需求：草稿/数字人/素材全在本地，云端不缓存） --------
+
+# 默认阈值（秒），可通过环境变量覆盖
+CLEANUP_INTERVAL_SEC = int(os.environ.get("CAPCUT_CLEANUP_INTERVAL", "3600"))   # 1h
+CLEANUP_UPLOAD_MAX_AGE = int(os.environ.get("CAPCUT_CLEANUP_UPLOAD_AGE", "604800"))  # 7d
+CLEANUP_ZIP_MAX_AGE = int(os.environ.get("CAPCUT_CLEANUP_ZIP_AGE", "604800"))  # 7d
+CLEANUP_LOG_MAX_AGE = int(os.environ.get("CAPCUT_CLEANUP_LOG_AGE", "2592000"))  # 30d
+CLEANUP_OFFLINE_CLIENT_DAYS = int(os.environ.get("CAPCUT_CLEANUP_OFFLINE_DAYS", "30"))  # 30d 未心跳
+
+
+def _cleanup_uploads_once() -> dict:
+    """清 uploads/main + uploads/broll 里超过阈值的旧文件（**这些是旧的"上传到云端处理"模式
+    留下的；C/S 模式不经过这里**）。"""
+    now = time.time()
+    removed = 0
+    bytes_freed = 0
+    for d in (MAIN_DIR, BROLL_DIR):
+        if not d.exists():
+            continue
+        for p in d.iterdir():
+            try:
+                if not p.is_file():
+                    continue
+                age = now - p.stat().st_mtime
+                if age > CLEANUP_UPLOAD_MAX_AGE:
+                    size = p.stat().st_size
+                    p.unlink()
+                    removed += 1
+                    bytes_freed += size
+                    log.info("[cleanup] 旧上传文件: %s (%.1f MB, %d 天前)",
+                             p.name, size / 1024 / 1024, int(age / 86400))
+            except OSError as e:
+                log.debug("[cleanup] 跳过 %s: %s", p, e)
+    # 清 outputs/*.zip 里超过阈值的（draft 文件夹本身如果用户没下载也会留下，按 7d 一起清）
+    if OUTPUT_DIR.exists():
+        for p in OUTPUT_DIR.glob("*.zip"):
+            try:
+                age = now - p.stat().st_mtime
+                if age > CLEANUP_ZIP_MAX_AGE:
+                    size = p.stat().st_size
+                    p.unlink()
+                    removed += 1
+                    bytes_freed += size
+                    log.info("[cleanup] 旧 zip: %s (%.1f MB, %d 天前)",
+                             p.name, size / 1024 / 1024, int(age / 86400))
+            except OSError:
+                pass
+    return {"removed": removed, "bytes_freed": bytes_freed}
+
+
+def _cleanup_db_once(db) -> dict:
+    """清 task_logs 里超过阈值的旧日志；标记 30 天没心跳的 client 为离线。"""
+    from datetime import datetime, timedelta, timezone
+    cutoff_log = datetime.now(timezone.utc) - timedelta(seconds=CLEANUP_LOG_MAX_AGE)
+    cutoff_offline = datetime.now(timezone.utc) - timedelta(days=CLEANUP_OFFLINE_CLIENT_DAYS)
+
+    from sqlalchemy import delete as _del, update as _upd
+    n_logs = db.execute(
+        _del(db_models.TaskLog).where(db_models.TaskLog.ts < cutoff_log)
+    ).rowcount
+
+    n_clients = db.execute(
+        _upd(db_models.Client)
+        .where(db_models.Client.last_seen_at < cutoff_offline, db_models.Client.is_online == True)  # noqa: E712
+        .values(is_online=False)
+    ).rowcount
+
+    db.commit()
+    if n_logs or n_clients:
+        log.info("[cleanup] DB: 删 %d 条旧日志, 标记 %d 个 client 离线", n_logs, n_clients)
+    return {"logs_deleted": n_logs, "clients_marked_offline": n_clients}
+
+
+def _cleanup_loop() -> None:
+    """后台线程：每 CLEANUP_INTERVAL_SEC 跑一次清理。"""
+    log.info("[cleanup] 启动定期清理线程（间隔 %ds）", CLEANUP_INTERVAL_SEC)
+    while True:
+        try:
+            time.sleep(CLEANUP_INTERVAL_SEC)
+            r1 = _cleanup_uploads_once()
+            from . import auth as _a
+            with _a.SessionLocal() as db:
+                r2 = _cleanup_db_once(db)
+            if r1.get("removed") or r2.get("logs_deleted") or r2.get("clients_marked_offline"):
+                log.info("[cleanup] 本轮: 文件 %d 项 / 日志 %d 条 / client %d 个",
+                         r1.get("removed", 0),
+                         r2.get("logs_deleted", 0),
+                         r2.get("clients_marked_offline", 0))
+        except Exception as e:
+            log.exception("[cleanup] 出错（继续下一轮）: %s", e)
+
+
 @app.on_event("startup")
 def _startup() -> None:
     _setup_logging()
+    # 建所有表（users / clients / assets / tasks / task_logs）
+    db_models.init_all_tables()
+    if auth_mod.seed_admin():
+        log.warning("已创建默认管理员 xiaoma（密码 niubi666），首次登录后请改密！")
+    # 起后台清理线程（守护线程，主进程退出它自动退）
+    t = threading.Thread(target=_cleanup_loop, name="cleanup", daemon=True)
+    t.start()
+    # 启动后跑一次
+    try:
+        r = _cleanup_uploads_once()
+        log.info("[cleanup] 启动时清扫: %d 项", r.get("removed", 0))
+    except Exception as e:
+        log.warning("[cleanup] 启动时清扫失败（忽略）: %s", e)
 
 
 # -------- 静态文件 / 首页 --------
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# -------- C/S 路由（拆分文件） --------
+app.include_router(web_clients.router)
+app.include_router(web_assets.router)
+app.include_router(web_tasks.router)
+
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def index() -> HTMLResponse:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
+
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def login_page() -> HTMLResponse:
+    """独立登录页：未登录时跳到这里。"""
+    html = (STATIC_DIR / "login.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
 
 
@@ -186,7 +308,7 @@ def _validate_wf_options(options: dict) -> dict:
     return out
 
 
-@app.get("/api/workflows")
+@app.get("/api/workflows", dependencies=[Depends(auth_mod.get_current_user)])
 def list_workflows() -> dict:
     """返回全部工作流：内置 + 用户。"""
     return {"workflows": _list_workflows()}
@@ -234,6 +356,164 @@ def delete_user_workflow(wf_id: str) -> dict:
         raise HTTPException(404, f"工作流不存在: {wf_id}")
     _save_json(USER_WF_FILE, kept)
     return {"deleted": wf_id, "remaining": len(kept)}
+
+
+# -------- 鉴权路由 --------
+
+class LoginReq(BaseModel):
+    username: str
+    password: str
+
+
+class RefreshReq(BaseModel):
+    refresh_token: str
+
+
+class ChangePwdReq(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class CreateUserReq(BaseModel):
+    username: str
+    password: str
+    email: str | None = None
+    is_admin: bool = False
+
+
+class ResetPwdReq(BaseModel):
+    new_password: str
+
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginReq, db=Depends(auth_mod.get_db)) -> dict:
+    """公开：用户名+密码登录，返回 access + refresh token。"""
+    from datetime import datetime, timezone
+    u = auth_mod.authenticate_user(db, req.username, req.password)
+    if not u:
+        raise HTTPException(401, "用户名或密码错误")
+    u.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    return {
+        "access_token": auth_mod.make_token(u.id, u.username, u.is_admin,
+                                             kind="access", ttl=auth_mod.ACCESS_TTL_SEC),
+        "refresh_token": auth_mod.make_token(u.id, u.username, u.is_admin,
+                                              kind="refresh", ttl=auth_mod.REFRESH_TTL_SEC),
+        "token_type": "bearer",
+        "user": {
+            "id": u.id,
+            "username": u.username,
+            "is_admin": u.is_admin,
+        },
+    }
+
+
+@app.post("/api/auth/refresh")
+def auth_refresh(req: RefreshReq) -> dict:
+    """公开：用 refresh token 换新的 access token。"""
+    import jwt as _jwt
+    try:
+        p = auth_mod.decode_token(req.refresh_token)
+    except _jwt.ExpiredSignatureError:
+        raise HTTPException(401, "refresh token 已过期，请重新登录")
+    except _jwt.InvalidTokenError:
+        raise HTTPException(401, "refresh token 无效")
+    if p.get("typ") != "refresh":
+        raise HTTPException(401, "需要 refresh token")
+    return {
+        "access_token": auth_mod.make_token(int(p["sub"]), p["uname"], p.get("adm", False),
+                                             kind="access", ttl=auth_mod.ACCESS_TTL_SEC),
+        "token_type": "bearer",
+    }
+
+
+@app.get("/api/auth/me", dependencies=[Depends(auth_mod.get_current_user)])
+def auth_me(user: auth_mod.User = Depends(auth_mod.get_current_user)) -> dict:
+    """需登录：当前用户信息。"""
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "is_admin": user.is_admin,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+    }
+
+
+@app.post("/api/auth/change-password",
+          dependencies=[Depends(auth_mod.get_current_user)])
+def auth_change_password(
+    req: ChangePwdReq,
+    user: auth_mod.User = Depends(auth_mod.get_current_user),
+    db=Depends(auth_mod.get_db),
+) -> dict:
+    """需登录：改自己的密码。"""
+    auth_mod.change_password(db, user, req.old_password, req.new_password)
+    return {"ok": True}
+
+
+@app.get("/api/auth/users", dependencies=[Depends(auth_mod.require_admin)])
+def list_users(db=Depends(auth_mod.get_db)) -> dict:
+    """管理员：列出所有用户。"""
+    from sqlalchemy import select as _sel
+    users = db.scalars(_sel(auth_mod.User).order_by(auth_mod.User.id)).all()
+    return {
+        "users": [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": u.email,
+                "is_admin": u.is_admin,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+            }
+            for u in users
+        ]
+    }
+
+
+@app.post("/api/auth/users",
+          dependencies=[Depends(auth_mod.require_admin)],
+          status_code=201)
+def admin_create_user(req: CreateUserReq, db=Depends(auth_mod.get_db)) -> dict:
+    """管理员：新建用户。"""
+    u = auth_mod.create_user(db, req.username, req.password,
+                              email=req.email, is_admin=req.is_admin)
+    return {"id": u.id, "username": u.username, "is_admin": u.is_admin}
+
+
+@app.delete("/api/auth/users/{uid}",
+            dependencies=[Depends(auth_mod.require_admin)])
+def admin_delete_user(
+    uid: int,
+    user: auth_mod.User = Depends(auth_mod.require_admin),
+    db=Depends(auth_mod.get_db),
+) -> dict:
+    """管理员：删除用户（不能删自己）。"""
+    if uid == user.id:
+        raise HTTPException(400, "不能删除自己")
+    target = db.get(auth_mod.User, uid)
+    if not target:
+        raise HTTPException(404, f"用户不存在: {uid}")
+    if target.username == "xiaoma":
+        raise HTTPException(400, "不能删除内置默认管理员 xiaoma")
+    db.delete(target)
+    db.commit()
+    return {"deleted": uid}
+
+
+@app.post("/api/auth/users/{uid}/reset-password",
+          dependencies=[Depends(auth_mod.require_admin)])
+def admin_reset_password(uid: int, req: ResetPwdReq, db=Depends(auth_mod.get_db)) -> dict:
+    """管理员：重置某用户密码。"""
+    target = db.get(auth_mod.User, uid)
+    if not target:
+        raise HTTPException(404, f"用户不存在: {uid}")
+    if len(req.new_password) < 6:
+        raise HTTPException(400, "新密码太短（至少 6 位）")
+    target.password_hash = auth_mod.hash_pwd(req.new_password)
+    db.commit()
+    return {"ok": True, "uid": uid}
 
 
 # 用 PIL 生成一张 16x16 青色 "C" 图标。装了 funasr / pyJianYingDraft 基本会顺带把
@@ -288,7 +568,8 @@ def _save_upload(file: UploadFile, dest_dir: Path) -> tuple[str, str]:
     return file_id, str(dest)
 
 
-@app.post("/api/upload-main")
+@app.post("/api/upload-main",
+             dependencies=[Depends(auth_mod.get_current_user)])
 async def upload_main(file: UploadFile = File(...)) -> dict:
     """上传主视频（数字人/口播），返回 file_id，后续用这个 id 启动任务。"""
     file_id, path = _save_upload(file, MAIN_DIR)
@@ -297,7 +578,8 @@ async def upload_main(file: UploadFile = File(...)) -> dict:
     return {"file_id": file_id, "filename": file.filename, "path": path}
 
 
-@app.post("/api/upload-broll")
+@app.post("/api/upload-broll",
+             dependencies=[Depends(auth_mod.get_current_user)])
 async def upload_broll(files: list[UploadFile] = File(...)) -> dict:
     """批量上传 B-roll 素材，返回 file_id 列表。"""
     ids: list[str] = []
@@ -385,7 +667,8 @@ def _run_job_sync(job: JobInfo, main_path: str, broll_paths: list[str], options:
         job.finished_at = time.time()
 
 
-@app.post("/api/jobs", status_code=201)
+@app.post("/api/jobs", status_code=201,
+             dependencies=[Depends(auth_mod.get_current_user)])
 def create_job(req: CreateJobReq, bg: BackgroundTasks) -> dict:
     with _FILES_LOCK:
         main_path = _MAIN_FILES.get(req.main_file_id)
@@ -408,7 +691,7 @@ def create_job(req: CreateJobReq, bg: BackgroundTasks) -> dict:
     return {"job_id": job.id, "status": job.status}
 
 
-@app.get("/api/jobs")
+@app.get("/api/jobs", dependencies=[Depends(auth_mod.get_current_user)])
 def list_jobs() -> dict:
     with _JOBS_LOCK:
         items = [
@@ -429,7 +712,8 @@ def list_jobs() -> dict:
     return {"jobs": items, "count": len(items)}
 
 
-@app.get("/api/jobs/{job_id}")
+@app.get("/api/jobs/{job_id}",
+            dependencies=[Depends(auth_mod.get_current_user)])
 def get_job(job_id: str) -> dict:
     with _JOBS_LOCK:
         j = _JOBS.get(job_id)
@@ -474,7 +758,8 @@ def download_job(job_id: str) -> FileResponse:
     )
 
 
-@app.delete("/api/jobs/{job_id}")
+@app.delete("/api/jobs/{job_id}",
+               dependencies=[Depends(auth_mod.get_current_user)])
 def delete_job(job_id: str) -> dict:
     with _JOBS_LOCK:
         j = _JOBS.get(job_id)

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · capcut-draft</title>
+<style>
+  :root {
+    --bg-0: #0a0b0e;
+    --bg-1: #11131a;
+    --bg-2: #181b24;
+    --bg-3: #21242f;
+    --line: #2a2e3a;
+    --line-strong: #3a3f4f;
+    --fg-0: #e8eaf0;
+    --fg-1: #aab0c0;
+    --fg-2: #6c7385;
+    --fg-3: #454a5a;
+    --accent: #00d4ff;
+    --accent-2: #ff6a00;
+    --danger: #ff4d6d;
+    --r-sm: 4px;
+    --r-md: 6px;
+    --r-lg: 10px;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI Variable", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg-0); color: var(--fg-0);
+    font-family: var(--sans); margin: 0; padding: 0;
+    font-feature-settings: "tnum" 1, "ss01" 1, "cv11" 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
+    line-height: 1.55;
+    background:
+      radial-gradient(1200px 600px at 90% -10%, rgba(0,212,255,.08), transparent 60%),
+      radial-gradient(800px 500px at -10% 110%, rgba(255,106,0,.06), transparent 60%),
+      var(--bg-0);
+  }
+  .wrap {
+    min-height: 100vh;
+    display: grid; place-items: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 380px;
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: 0 12px 40px rgba(0,0,0,.5);
+    padding: 32px 28px;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .logo {
+    width: 40px; height: 40px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent) 0%, #4a8df8 100%);
+    display: grid; place-items: center; color: #0a0b0e; font-weight: 800;
+    box-shadow: 0 0 24px rgba(0,212,255,.4);
+    font-size: 18px;
+  }
+  .brand h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: .02em; }
+  .brand small { display: block; font-family: var(--mono); color: var(--fg-2); font-size: 11px; margin-top: 2px; letter-spacing: 1px; }
+  h2 { margin: 0 0 18px; font-size: 14px; font-weight: 600; color: var(--fg-1); letter-spacing: .5px; }
+  label { display: block; font-size: 12px; color: var(--fg-1); margin-bottom: 6px; font-family: var(--mono); letter-spacing: 1px; }
+  .field { margin-bottom: 14px; }
+  input[type=text], input[type=password] {
+    width: 100%;
+    background: var(--bg-0); border: 1px solid var(--line-strong);
+    color: var(--fg-0); padding: 10px 12px; border-radius: var(--r-sm);
+    font-family: var(--mono); font-size: 14px;
+  }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,.15); }
+  .btn {
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent) 0%, #4a8df8 100%);
+    color: #0a0b0e; border: 0; border-radius: var(--r-sm);
+    padding: 11px 16px; font-weight: 700; font-size: 13px;
+    cursor: pointer; letter-spacing: 1px; text-transform: uppercase;
+    margin-top: 6px;
+    transition: all .15s;
+  }
+  .btn:hover { box-shadow: 0 0 24px rgba(0,212,255,.5); transform: translateY(-1px); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .err {
+    background: rgba(255,77,109,.1); border: 1px solid var(--danger);
+    color: var(--danger); padding: 8px 12px; border-radius: var(--r-sm);
+    font-size: 12px; margin-bottom: 14px; display: none;
+  }
+  .err.show { display: block; }
+  .hint { margin-top: 18px; color: var(--fg-3); font-size: 11px; font-family: var(--mono); text-align: center; }
+  .toast-stack {
+    position: fixed; top: 20px; right: 20px; z-index: 100;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .toast {
+    background: var(--bg-2); border: 1px solid var(--line-strong);
+    padding: 10px 16px; border-radius: var(--r-sm);
+    font-size: 13px; min-width: 200px; max-width: 360px;
+    animation: slideIn .2s ease-out;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="brand">
+      <div class="logo">C</div>
+      <div>
+        <h1>capcut-draft</h1>
+        <small>数字人 + B-roll + ASR 字幕</small>
+      </div>
+    </div>
+    <h2>登 录</h2>
+    <div class="err" id="err"></div>
+    <form id="login-form" autocomplete="on">
+      <div class="field">
+        <label for="username">USERNAME</label>
+        <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label for="password">PASSWORD</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn" type="submit" id="btn-login">登 录</button>
+    </form>
+    <div class="hint">内部使用 · 找管理员开账号</div>
+  </div>
+</div>
+<div class="toast-stack" id="toasts" aria-live="polite"></div>
+<script>
+(function() {
+  // 如果已登录，直接跳走
+  if (localStorage.getItem('capcut_token')) {
+    window.location.href = '/';
+    return;
+  }
+
+  const $ = (s) => document.querySelector(s);
+  const errEl = $('#err');
+  const btn = $('#btn-login');
+  const form = $('#login-form');
+
+  function showErr(msg) {
+    errEl.textContent = msg;
+    errEl.classList.add('show');
+  }
+  function hideErr() { errEl.classList.remove('show'); }
+
+  function toast(msg, kind) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    if (kind === 'err') t.style.borderColor = 'var(--danger)';
+    t.textContent = msg;
+    $('#toasts').appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideErr();
+    btn.disabled = true; btn.textContent = '登录中…';
+    const username = $('#username').value.trim();
+    const password = $('#password').value;
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showErr(data.detail || `登录失败 (${r.status})`);
+        btn.disabled = false; btn.textContent = '登 录';
+        return;
+      }
+      localStorage.setItem('capcut_token', data.access_token);
+      localStorage.setItem('capcut_refresh', data.refresh_token);
+      localStorage.setItem('capcut_user', JSON.stringify(data.user));
+      toast('登录成功');
+      setTimeout(() => { window.location.href = '/'; }, 300);
+    } catch (err) {
+      showErr('网络错误: ' + err.message);
+      btn.disabled = false; btn.textContent = '登 录';
+    }
+  });
+})();
+</script>
+</body>
+</html>

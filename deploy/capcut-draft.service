@@ -1,0 +1,29 @@
+[Unit]
+Description=capcut-draft - digital human + B-roll -> JianYing draft
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/capcut-draft
+Environment="PYTHONPATH=/opt/capcut-draft/src"
+Environment="NO_COLOR=1"
+Environment="PYTHONIOENCODING=utf-8"
+Environment="PYTHONUNBUFFERED=1"
+# 生产部署必须改：用 `openssl rand -hex 32` 生成
+Environment="CAPCUT_JWT_SECRET=PLEASE-CHANGE-ME-WITH-openssl-rand-hex-32"
+ExecStart=/opt/capcut-draft/.venv/bin/gunicorn \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --workers 2 \
+    --timeout 600 \
+    --access-logfile - \
+    --error-logfile - \
+    capcut_draft.web:app
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/capcut-draft.log
+StandardError=append:/var/log/capcut-draft.err
+
+[Install]
+WantedBy=multi-user.target

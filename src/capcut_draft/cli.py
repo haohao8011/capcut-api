@@ -8,6 +8,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Callable, Optional
 
 from .asr import transcribe
 from .builder import build_draft
@@ -42,14 +43,29 @@ def _process_one(
     add_subtitles: bool,
     skip_asr: bool,
     log: logging.Logger,
+    progress_cb: Optional[callable] = None,  # type: ignore[name-defined]
 ) -> str:
-    """处理单个主视频，返回草稿路径。"""
+    """处理单个主视频，返回草稿路径。
+
+    progress_cb(pct: int, msg: str) — 客户端 worker 可选传，
+    用来向服务端上报进度；不传则静默。
+    """
     segments = []
     cuts = []
     total_dur = None
 
+    def _report(pct: int, msg: str) -> None:
+        log.info("[%d%%] %s", pct, msg)
+        if progress_cb is not None:
+            try:
+                progress_cb(pct, msg)
+            except Exception as e:  # 不让回调报错炸掉主流程
+                log.debug("progress_cb 回调异常: %s", e)
+
+    _report(2, "开始处理")
+
     if not skip_asr:
-        log.info("[%s] ASR 转写中...", main_path.name)
+        _report(5, f"ASR 转写中: {main_path.name}")
         result = transcribe(str(main_path), pause_threshold=pause_threshold)
         segments = result.segments
         cuts = result.cut_points
@@ -57,6 +73,7 @@ def _process_one(
                  main_path.name, len(segments), len(cuts))
         for s in segments[:5]:
             log.info("  [%.2f-%.2f] %s", s.start, s.end, s.text)
+        _report(40, f"ASR 完成（{len(segments)} 段，{len(cuts)} 切点）")
     else:
         from .builder import _probe_video_duration
         try:
@@ -64,6 +81,7 @@ def _process_one(
         except Exception as e:
             log.error("[%s] 无法探测时长: %s", main_path.name, e)
             raise
+        _report(15, f"跳过 ASR，主时长 {total_dur:.1f}s")
 
     cuts = select_cut_points(
         cuts,
@@ -73,8 +91,10 @@ def _process_one(
         fallback_interval=6.0,
     )
     log.info("[%s] 最终切点数: %d", main_path.name, len(cuts))
+    _report(50, f"切点确定: {len(cuts)} 个")
 
-    return build_draft(
+    _report(55, f"开始构建草稿（{len(brolls)} 个 B-roll）")
+    out = build_draft(
         main_video=str(main_path),
         broll_clips=[str(p) for p in brolls],
         segments=segments,
@@ -87,6 +107,8 @@ def _process_one(
         fps=fps,
         add_subtitles=add_subtitles,
     )
+    _report(98, f"草稿构建完成")
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
