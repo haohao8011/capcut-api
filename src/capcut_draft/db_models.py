@@ -220,12 +220,70 @@ def generate_client_token() -> tuple[str, str]:
     return plain, auth_mod.hash_pwd(plain)
 
 
+def generate_setup_code() -> str:
+    """生成 6 位人类可读安装码（去掉 0/O/1/I/L），员工手敲不易错。"""
+    import random
+    # 大写字母去掉 0/O/1/I/L，数字去掉 0/1（人眼混淆）
+    alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    return "".join(random.choices(alphabet, k=6))
+
+
 def verify_client_token(plain: str, hashed: str) -> bool:
     return auth_mod.verify_pwd(plain, hashed)
 
 
+# -------- 一次性安装码（管理员生成，员工兑换） --------
+
+class SetupCode(Base):
+    """客户端安装码。流程：
+
+    1. 管理员 dashboard 点"生成安装码" → 创建 SetupCode（含 name hint / 过期）
+    2. 员工双击 install-client.bat → 装好客户端 → 弹窗输 setup_code + 服务端 URL
+    3. 客户端调 `/api/clients/wizard/redeem` 换 token → 写本地 credentials.json
+
+    一个码只能用一次（redeemed_at 标记）。
+    """
+    __tablename__ = "setup_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), unique=True, index=True)
+    # 提示名（默认生成的 client.name，不强约束，redeem 时可改）
+    name_hint: Mapped[str] = mapped_column(String(64))
+    # 谁生成的（admin）
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    redeemed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 兑换后绑定的 client
+    redeemed_client_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("clients.id", ondelete="SET NULL"), nullable=True
+    )
+
+    def to_dict(self) -> dict:
+        # SQLite 存的 datetime 是 naive，与 aware 的 now() 比要先 normalize
+        now_aware = datetime.now(timezone.utc)
+        expires = self.expires_at
+        if expires is not None and expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return {
+            "id": self.id,
+            "code": self.code,
+            "name_hint": self.name_hint,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "redeemed_at": self.redeemed_at.isoformat() if self.redeemed_at else None,
+            "redeemed_client_id": self.redeemed_client_id,
+            "is_active": self.redeemed_at is None and (
+                self.expires_at is None or expires > now_aware
+            ),
+        }
+
+
 def init_all_tables() -> None:
-    """建所有表（users / clients / assets / tasks / task_logs）。"""
+    """建所有表（users / clients / assets / tasks / task_logs / setup_codes）。"""
     Base.metadata.create_all(bind=auth_mod.engine)
 
 

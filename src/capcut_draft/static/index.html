@@ -243,7 +243,8 @@
           <label class="btn secondary small">
             <input type="checkbox" id="filter-online-only" style="margin-right:6px;"> 只看在线
           </label>
-          <button class="btn" onclick="openRegisterClientModal()">+ 注册新客户端</button>
+          <button class="btn secondary" onclick="openSetupCodeModal()">🪄 生成安装码（推荐）</button>
+          <button class="btn" onclick="openRegisterClientModal()">+ 高级注册</button>
         </div>
       </div>
       <div class="card-body" style="padding: 0">
@@ -262,6 +263,30 @@
           </thead>
           <tbody id="clients-tbody">
             <tr><td colspan="8" class="empty">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>安装码（一次性）</h2>
+        <span class="hint">点了"生成安装码" → 把 6 位码告诉员工 → 员工双击 install-client.bat 输码</span>
+      </div>
+      <div class="card-body" style="padding: 0">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>码</th>
+              <th>提示名</th>
+              <th>生成时间</th>
+              <th>过期</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody id="setup-codes-tbody">
+            <tr><td colspan="6" class="empty">加载中…</td></tr>
           </tbody>
         </table>
       </div>
@@ -301,11 +326,27 @@
 
 <!-- ============ Modals ============ -->
 
+<!-- 安装码弹窗 -->
+<div class="modal-bg" id="modal-setup-code">
+  <div class="modal" style="text-align: center;">
+    <h3>🪄 客户端安装码</h3>
+    <p>把下面这个 6 位码告诉员工。<br>员工双击 <code class="mono">install-client.bat</code>，输服务端 URL + 这个码就完成配对。</p>
+    <div class="token-box" id="new-setup-code" style="font-size: 32px; letter-spacing: 6px; padding: 24px;"></div>
+    <p class="small dim" id="setup-code-meta" style="margin-top: 12px;"></p>
+    <p class="warn" style="margin-top: 12px;">⚠️ 1 个码只能用 1 次，过期作废</p>
+    <div class="row-actions" style="margin-top: 12px; justify-content: center;">
+      <button class="btn secondary" onclick="document.getElementById('modal-setup-code').classList.remove('active')">关闭</button>
+      <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('new-setup-code').textContent); toast('已复制', 'success');">📋 复制码</button>
+    </div>
+  </div>
+</div>
+
 <!-- 注册客户端：返回明文 token（只显示一次） -->
 <div class="modal-bg" id="modal-client-token">
   <div class="modal">
     <h3>🔑 客户端 Token</h3>
-    <p>复制下面这段 token，写到员工机器的 <code class="mono">config/client.yaml</code> 的 <code class="mono">client_token</code> 字段。</p>
+    <p>这是"高级注册"模式，适合已经配好 yaml 的老客户端。复制 token 写到员工机器的 <code class="mono">config/client.yaml</code> 的 <code class="mono">client_token</code> 字段。</p>
+    <p style="color: var(--accent); font-weight: 600;">💡 新员工建议改用"生成安装码"模式（推荐）：员工双击 install-client.bat，输服务端 URL + 6 位码就完成配对。</p>
     <p style="color: var(--danger); font-weight: 600;">⚠️ 这段 token 只显示一次，关闭后无法找回。</p>
     <div class="token-box" id="new-client-token"></div>
     <div class="row-actions" style="margin-top: 12px; justify-content: flex-end;">
@@ -460,7 +501,7 @@ $$('.tab').forEach(t => t.addEventListener('click', () => {
   t.classList.add('active');
   $(`.tab-panel[data-panel="${t.dataset.tab}"]`).classList.add('active');
   if (t.dataset.tab === 'tasks') refreshTasks();
-  if (t.dataset.tab === 'clients') refreshClients();
+  if (t.dataset.tab === 'clients') { refreshClients(); refreshSetupCodes(); }
   if (t.dataset.tab === 'users') refreshUsers();
 }));
 

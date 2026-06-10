@@ -92,3 +92,10 @@ class ServerAPI:
         except Exception as e:
             log.debug("ping failed: %s", e)
             return False
+
+    # -------- wizard：员工用 setup_code 换 token --------
+
+    def wizard_redeem(self, code: str, name: str, hostname: str, version: str = "0.1.0") -> dict:
+        """调服务端 /api/clients/wizard/redeem 换 token。返回 dict 含 token（明文）+ client 信息。"""
+        return self._req("POST", "/api/clients/wizard/redeem",
+                         json={"code": code, "name": name, "hostname": hostname, "version": version})
