@@ -30,7 +30,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import auth as auth_mod
 from . import db_models
-from . import web_assets, web_clients, web_drafts, web_folders, web_tasks, web_uploads
+from . import web_admin, web_assets, web_clients, web_drafts, web_folders, web_tasks, web_uploads
 
 # -------- 限流器（防暴力破解） --------
 # 默认 5 次/分钟/IP；CAPCUT_LOGIN_RATE_LIMIT=0 可关闭（测试用）
@@ -207,6 +207,7 @@ app.include_router(web_assets.router)
 app.include_router(web_tasks.router)
 app.include_router(web_drafts.router)
 app.include_router(web_uploads.router)
+app.include_router(web_admin.router)
 app.include_router(web_folders.router)
 
 

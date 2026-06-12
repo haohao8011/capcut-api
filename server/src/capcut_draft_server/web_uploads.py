@@ -1,4 +1,4 @@
-"""素材上传 API + Admin 审核 + 系统统计。
+"""素材上传 API（用户端视角）。
 
 用户端（user JWT）：
 - POST   /api/uploads                    上传视频（multipart）
@@ -8,23 +8,16 @@
 - GET    /api/uploads/{id}/file          下载/流式获取文件
 - DELETE /api/uploads/{id}               删除（DB+磁盘）
 
-Admin 审核（admin JWT）：
-- GET    /api/admin/review               全部上传素材（含审核状态筛选）
-- POST   /api/admin/review/{id}/flag     标记 flagged
-- POST   /api/admin/review/{id}/approve  标记 approved
-- POST   /api/admin/review/{id}/reject   标记 rejected
-- DELETE /api/admin/review/{id}          管理员硬删
-- GET    /api/admin/stats                系统统计概览
-
 客户端下载（client token cap_xxx）：
 - GET    /api/uploads/{id}/download      Worker 从服务器下载素材
+
+Admin 端点（review + stats）见 `web_admin.py`。
 """
 from __future__ import annotations
 
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -107,8 +100,8 @@ def _user_asset_quota_bytes(db: Session, user: auth_mod.User) -> int:
     return user.asset_quota_mb * 1024 * 1024
 
 
-def _resolve_upload_path(ua: UploadedAsset) -> Path:
-    """把 DB 里的 storage_path 还原成绝对路径。"""
+def resolve_upload_path(ua: UploadedAsset) -> Path:
+    """把 DB 里的 storage_path 还原成绝对路径（公开 helper：web_admin 也用）。"""
     sp = ua.storage_path
     p = Path(sp)
     if not p.is_absolute():
@@ -381,7 +374,7 @@ def download_upload_file(
     if ua.owner_id != user.id and not user.is_admin:
         raise HTTPException(403, "无权下载此素材")
 
-    path = _resolve_upload_path(ua)
+    path = resolve_upload_path(ua)
     if not path.is_file():
         raise HTTPException(410, f"素材文件已丢失：{ua.filename}")
 
@@ -407,7 +400,7 @@ def delete_upload(
         raise HTTPException(403, "只能删除自己的素材")
 
     # 删文件
-    path = _resolve_upload_path(ua)
+    path = resolve_upload_path(ua)
     try:
         if path.is_file():
             path.unlink()
@@ -442,7 +435,7 @@ def client_download_upload(
     if not ua:
         raise HTTPException(404, "素材不存在")
 
-    path = _resolve_upload_path(ua)
+    path = resolve_upload_path(ua)
     if not path.is_file():
         raise HTTPException(410, f"素材文件已丢失：{ua.filename}")
 
@@ -452,197 +445,3 @@ def client_download_upload(
         media_type=ua.mime_type or "application/octet-stream",
     )
 
-
-# -------- Admin：素材审核 --------
-
-@router.get("/api/admin/review", dependencies=[Depends(auth_mod.require_admin)])
-def admin_list_review(
-    db: Session = Depends(auth_mod.get_db),
-    review_status: Optional[str] = Query(None, description="审核状态筛选"),
-    owner_id: Optional[int] = Query(None, description="按上传者筛选"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
-) -> dict:
-    """Admin：列出所有上传素材（含审核状态）。"""
-    q = select(UploadedAsset)
-    cnt = select(func.count(UploadedAsset.id))
-
-    if review_status:
-        q = q.where(UploadedAsset.review_status == review_status)
-        cnt = cnt.where(UploadedAsset.review_status == review_status)
-    if owner_id is not None:
-        q = q.where(UploadedAsset.owner_id == owner_id)
-        cnt = cnt.where(UploadedAsset.owner_id == owner_id)
-
-    q = q.order_by(UploadedAsset.id.desc())
-    offset = (page - 1) * page_size
-    items = db.scalars(q.offset(offset).limit(page_size)).all()
-    total = db.scalar(cnt) or 0
-
-    # 附带上传者用户名
-    result = []
-    for ua in items:
-        d = ua.to_dict()
-        owner = db.get(auth_mod.User, ua.owner_id)
-        d["owner_username"] = owner.username if owner else None
-        result.append(d)
-
-    return {"items": result, "page": page, "page_size": page_size, "total": total}
-
-
-@router.post("/api/admin/review/{aid}/flag", dependencies=[Depends(auth_mod.require_admin)])
-def admin_flag_asset(
-    aid: int,
-    user: auth_mod.User = Depends(auth_mod.require_admin),
-    db: Session = Depends(auth_mod.get_db),
-) -> dict:
-    ua = db.get(UploadedAsset, aid)
-    if not ua:
-        raise HTTPException(404, "素材不存在")
-    ua.review_status = "flagged"
-    ua.reviewed_by = user.id
-    ua.reviewed_at = datetime.now(timezone.utc)
-    db.commit()
-    return {"ok": True, "asset_id": ua.id, "review_status": "flagged"}
-
-
-@router.post("/api/admin/review/{aid}/approve", dependencies=[Depends(auth_mod.require_admin)])
-def admin_approve_asset(
-    aid: int,
-    user: auth_mod.User = Depends(auth_mod.require_admin),
-    db: Session = Depends(auth_mod.get_db),
-) -> dict:
-    ua = db.get(UploadedAsset, aid)
-    if not ua:
-        raise HTTPException(404, "素材不存在")
-    ua.review_status = "approved"
-    ua.reviewed_by = user.id
-    ua.reviewed_at = datetime.now(timezone.utc)
-    db.commit()
-    return {"ok": True, "asset_id": ua.id, "review_status": "approved"}
-
-
-@router.post("/api/admin/review/{aid}/reject", dependencies=[Depends(auth_mod.require_admin)])
-def admin_reject_asset(
-    aid: int,
-    user: auth_mod.User = Depends(auth_mod.require_admin),
-    db: Session = Depends(auth_mod.get_db),
-) -> dict:
-    ua = db.get(UploadedAsset, aid)
-    if not ua:
-        raise HTTPException(404, "素材不存在")
-    ua.review_status = "rejected"
-    ua.reviewed_by = user.id
-    ua.reviewed_at = datetime.now(timezone.utc)
-    db.commit()
-    return {"ok": True, "asset_id": ua.id, "review_status": "rejected"}
-
-
-@router.delete("/api/admin/review/{aid}", dependencies=[Depends(auth_mod.require_admin)])
-def admin_delete_asset(
-    aid: int,
-    user: auth_mod.User = Depends(auth_mod.require_admin),
-    db: Session = Depends(auth_mod.get_db),
-) -> dict:
-    ua = db.get(UploadedAsset, aid)
-    if not ua:
-        raise HTTPException(404, "素材不存在")
-
-    path = _resolve_upload_path(ua)
-    try:
-        if path.is_file():
-            path.unlink()
-    except OSError as e:
-        log.warning("[uploads] admin unlink 失败 %s: %s", path, e)
-
-    db.delete(ua)
-    db.commit()
-    log.info("[uploads] admin %s 删除素材 id=%s owner=%s", user.username, ua.id, ua.owner_id)
-    return {"ok": True, "asset_id": ua.id, "freed_bytes": ua.size}
-
-
-# -------- Admin：系统统计 --------
-
-@router.get("/api/admin/stats", dependencies=[Depends(auth_mod.require_admin)])
-def admin_stats(db: Session = Depends(auth_mod.get_db)) -> dict:
-    """系统统计概览：用户数/任务数/素材占用/草稿占用/磁盘剩余。"""
-    from datetime import timedelta
-
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = today_start - timedelta(days=today_start.weekday())
-
-    # 用户数
-    user_count = db.scalar(select(func.count(auth_mod.User.id))) or 0
-
-    # 任务统计
-    total_tasks = db.scalar(select(func.count(models.Task.id))) or 0
-    today_tasks = db.scalar(
-        select(func.count(models.Task.id)).where(models.Task.created_at >= today_start)
-    ) or 0
-    week_tasks = db.scalar(
-        select(func.count(models.Task.id)).where(models.Task.created_at >= week_start)
-    ) or 0
-
-    # 素材占用
-    asset_total_bytes = db.scalar(
-        select(func.coalesce(func.sum(UploadedAsset.size), 0))
-    ) or 0
-
-    # 草稿占用
-    draft_total_bytes = db.scalar(
-        select(func.coalesce(func.sum(models.Draft.size), 0))
-    ) or 0
-    draft_count = db.scalar(select(func.count(models.Draft.id))) or 0
-
-    # 客户端在线数
-    online_clients = db.scalar(
-        select(func.count(models.Client.id)).where(models.Client.is_online == True)  # noqa: E712
-    ) or 0
-
-    # 磁盘信息
-    import shutil
-    disk_usage = shutil.disk_usage(str(DATA_DIR))
-
-    # 最近 10 条完成任务
-    recent_tasks = db.scalars(
-        select(models.Task)
-        .where(models.Task.status.in_(["done", "failed"]))
-        .order_by(models.Task.finished_at.desc())
-        .limit(10)
-    ).all()
-
-    return {
-        "users": user_count,
-        "tasks": {
-            "total": total_tasks,
-            "today": today_tasks,
-            "week": week_tasks,
-        },
-        "assets": {
-            "total_bytes": asset_total_bytes,
-            "total_display": _fmt_mb(asset_total_bytes),
-            "count": db.scalar(select(func.count(UploadedAsset.id))) or 0,
-        },
-        "drafts": {
-            "total_bytes": draft_total_bytes,
-            "total_display": _fmt_mb(draft_total_bytes),
-            "count": draft_count,
-        },
-        "clients_online": online_clients,
-        "disk": {
-            "total": disk_usage.total,
-            "used": disk_usage.used,
-            "free": disk_usage.free,
-            "free_display": _fmt_mb(disk_usage.free),
-        },
-        "recent_tasks": [
-            {
-                "id": t.id,
-                "status": t.status,
-                "workflow_name": t.workflow_name,
-                "finished_at": t.finished_at.isoformat() if t.finished_at else None,
-            }
-            for t in recent_tasks
-        ],
-    }

@@ -148,7 +148,8 @@ capcut-api/
 │       ├── web.py                #   FastAPI 入口（含 cleanup_loop）+ StaticFiles 挂载 + 重定向
 │       ├── web_clients.py        #   /api/clients/* （注册/心跳/列表/删/重置 token/wizard）
 │       ├── web_assets.py         #   /api/assets/* （合并查询 UploadedAsset + Asset，带 source 字段）
-│       ├── web_uploads.py        #   ★ /api/uploads/* + /api/admin/review/* + /api/admin/stats
+│       ├── web_uploads.py        #   /api/uploads/* （用户端上传/列表/配额/下载/删除/move）
+│       ├── web_admin.py          #   /api/admin/review/* + /api/admin/stats（admin 后台：审核 + 统计）
 │       ├── web_folders.py        #   ★ /api/folders/* （CRUD + 树形结构）
 │       ├── web_tasks.py          #   /api/tasks/* （CRUD + 领取/进度/完成/失败/取消/重试 + 双来源素材）
 │       ├── web_drafts.py         #   ★ /api/drafts/* + /share/* （上传/列表/下载/删/share/公开页）
@@ -355,6 +356,7 @@ capcut-api/
 
 ## 协作规则
 
+- **🔴 不要把代码挤在一个文件写**：按职责分文件、分文件夹。一个文件超过 ~300 行就该考虑拆。Router 拆 `web_xxx.py`、Helper 抽 `xxx_helpers.py`、同类放 `xxx/` 子包——别堆在一个 `web.py` / `utils.py` 里。AI 写代码默认按这个走，**新功能起新文件**，不要 append 到已有的"大杂烩"文件。
 - 修改代码前先 `Read` 现有文件，不要凭印象改
 - 写完代码 + 自测通过再 commit，commit 前看 `git diff` 确认改动范围
 - 沙盒环境限制：Playwright Chromium 装不了（`__dirlock` 权限），截图统一用 Edge headless（`tests/shoot.py`）
@@ -489,6 +491,7 @@ ssh -i "D:\Offices\三鼎.pem" root@8.129.83.166 "journalctl -u capcut-server --
   - 素材库：显示文件夹列表，点击进入文件夹，支持新建/删除文件夹
   - 上传素材：可选择目标文件夹，支持文件夹上传
   - 素材移动：可将素材移动到指定文件夹
+- [x] ★ **拆分 web_admin.py**（2026-06-12）：把 `web_uploads.py` 里的 admin 路由（5 review + 1 stats）拆到独立文件，`web_uploads.py` 648 → 447 行；`_resolve_upload_path` 改公开（admin 复用）；新加协作规则"不要把代码挤在一个文件写"
 
 ### 未做 / 待办
 - [ ] 真实即创视频端到端测试（需要用户提供素材）
