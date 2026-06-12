@@ -35,17 +35,10 @@ sudo -u $APP_USER $APP_DIR/.venv/bin/pip install --upgrade pip -i https://pypi.t
 # monorepo 拆 3 个子包（common + server），gunicorn 已在 server/pyproject.toml deps 里
 sudo -u $APP_USER $APP_DIR/.venv/bin/pip install -e $APP_DIR/common -e $APP_DIR/server -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-echo "==> 5. 初始化数据目录 + 备份目录"
+echo "==> 5. 初始化数据目录"
 mkdir -p /var/lib/capcut-draft/{drafts,logs}
-mkdir -p /var/backups/capcut
-chown -R $APP_USER:$APP_USER /var/lib/capcut-draft /var/backups/capcut
-
-echo "==> 5b. 装 daily 备份 cron（capcut.db.gz 保留 7 天）"
-cat > /etc/cron.d/capcut-backup <<'CRON'
-# 每天凌晨 3 点备份 SQLite + 草稿，保留 7 天
-0 3 * * * root /bin/bash -c 'set -e; cd /var/lib/capcut-draft && /opt/capcut-draft/.venv/bin/python -c "import sqlite3; con=sqlite3.connect(\"capcut.db\"); con.execute(\"BEGIN IMMEDIATE;\"); con.execute(\"VACUUM INTO '\''/var/backups/capcut/snapshot.db'\''\"); con.close()" && gzip -c /var/backups/capcut/snapshot.db > /var/backups/capcut/capcut.db.$(date +\%Y\%m\%d_\%H\%M\%S).gz && rm -f /var/backups/capcut/snapshot.db && tar -czf /var/backups/capcut/drafts.$(date +\%Y\%m\%d_\%H\%M\%S).tgz -C /var/lib/capcut-draft drafts/ && find /var/backups/capcut -name "capcut.db.*.gz" -mtime +7 -delete && find /var/backups/capcut -name "drafts.*.tgz" -mtime +7 -delete' >/var/log/capcut-backup.log 2>&1
-CRON
-chmod 644 /etc/cron.d/capcut-backup
+chown -R $APP_USER:$APP_USER /var/lib/capcut-draft
+# 注：不备份（30G 小盘扛不住双重存储；草稿删了就删了，用户自负责）
 
 echo "==> 6. 写 .env（如果还没有）"
 if [ ! -f $APP_DIR/.env ]; then
