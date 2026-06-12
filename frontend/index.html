@@ -254,12 +254,27 @@
             </div>
           </div>
           <div class="card-body">
-            <div id="drop-zone" style="border: 2px dashed var(--line-strong); border-radius: var(--r-md); padding: 40px; text-align: center; cursor: pointer; transition: all .2s;" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault(); this.style.borderColor='var(--accent)'; this.style.background='rgba(0,212,255,.05)'" ondragleave="this.style.borderColor='var(--line-strong)'; this.style.background=''" ondrop="event.preventDefault(); this.style.borderColor='var(--line-strong)'; this.style.background=''; handleFiles(event.dataTransfer.files)">
+            <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+              <div style="flex: 1;">
+                <label class="small dim" style="display: block; margin-bottom: 4px;">目标文件夹</label>
+                <div style="display: flex; gap: 8px;">
+                  <select id="upload-folder" class="btn secondary small" style="flex: 1; padding: 6px 10px;">
+                    <option value="">根目录</option>
+                  </select>
+                  <button class="btn secondary small" onclick="createUploadFolder()" title="新建文件夹">+ 新建</button>
+                </div>
+              </div>
+            </div>
+            <div id="drop-zone" style="border: 2px dashed var(--line-strong); border-radius: var(--r-md); padding: 40px; text-align: center; cursor: pointer; transition: all .2s;" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault(); this.style.borderColor='var(--accent)'; this.style.background='rgba(0,212,255,.05)'" ondragleave="this.style.borderColor='var(--line-strong)'; this.style.background=''" ondrop="event.preventDefault(); this.style.borderColor='var(--line-strong)'; this.style.background=''; handleDrop(event)">
               <div style="font-size: 36px; margin-bottom: 8px;">📁</div>
-              <div style="color: var(--fg-1); font-size: 14px;">拖拽文件到此处，或 <span style="color: var(--accent); cursor: pointer;">点击选择文件</span></div>
-              <div style="color: var(--fg-2); font-size: 12px; margin-top: 6px; font-family: var(--mono);">支持 .mp4 .mov .avi .mkv .webm · 单文件 ≤ 1GB</div>
+              <div style="color: var(--fg-1); font-size: 14px;">拖拽文件或文件夹到此处，或 <span style="color: var(--accent); cursor: pointer;">点击选择文件</span></div>
+              <div style="color: var(--fg-2); font-size: 12px; margin-top: 6px; font-family: var(--mono);">支持 .mp4 .mov .avi .mkv .webm · 单文件 ≤ 1GB · 支持整个文件夹上传</div>
             </div>
             <input type="file" id="file-input" multiple accept=".mp4,.mov,.avi,.mkv,.webm" style="display:none" onchange="handleFiles(this.files)">
+            <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none" onchange="handleFiles(this.files)">
+            <div style="margin-top: 10px; text-align: center;">
+              <button class="btn secondary small" onclick="document.getElementById('folder-input').click()">📂 选择文件夹上传</button>
+            </div>
             <div id="upload-queue" style="margin-top: 16px;"></div>
           </div>
         </div>
@@ -284,14 +299,22 @@
           <div class="card-head">
             <h2>素材库</h2>
             <div class="row-actions">
+              <select id="filter-folder" class="btn secondary small" style="padding: 4px 10px;" onchange="refreshAssets()">
+                <option value="">全部文件夹</option>
+              </select>
               <select id="filter-source" class="btn secondary small" style="padding: 4px 10px;" onchange="refreshAssets()">
                 <option value="">全部来源</option><option value="web_upload">Web 上传</option><option value="client_scan">客户端扫盘</option>
               </select>
               <select id="filter-kind" class="btn secondary small" style="padding: 4px 10px;" onchange="refreshAssets()">
                 <option value="">全部类型</option><option value="main">主视频</option><option value="broll">B-roll</option>
               </select>
+              <button class="btn secondary small" onclick="createFolder()">📁 新建文件夹</button>
               <button class="btn secondary small" onclick="refreshAssets()">🔄 刷新</button>
             </div>
+          </div>
+          <div id="folder-breadcrumb" style="padding: 8px 18px; border-bottom: 1px solid var(--line); display: none;">
+            <span class="small dim">当前位置：</span>
+            <a href="#" class="small" onclick="navigateFolder(''); return false;">根目录</a>
           </div>
           <div class="card-body" style="padding: 0">
             <table>
@@ -493,18 +516,41 @@ function basename(p) { if (!p) return ''; const m = p.match(/[^\\/]+$/); return 
 function fmtTime(iso) { if (!iso) return '-'; const d = new Date(iso); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-// ============== Navigation ==============
+// ============== Navigation (History API) ==============
 const pageTitles = { upload: '上传素材', assets: '素材库', tasks: '我的任务', drafts: '我的草稿', settings: '个人设置' };
+const VALID_ROUTES = Object.keys(pageTitles);
+
+function getRouteFromUrl() {
+  const path = window.location.pathname.replace(/^\/app\/?/, '').replace(/\/$/, '');
+  return path || 'upload';
+}
+
+function navigateTo(route, replace) {
+  if (!VALID_ROUTES.includes(route)) route = 'upload';
+  const url = '/app/' + route;
+  if (replace) history.replaceState({ route }, '', url);
+  else history.pushState({ route }, '', url);
+  activateSection(route);
+}
+
+function activateSection(route) {
+  if (!VALID_ROUTES.includes(route)) route = 'upload';
+  $$('.nav-item').forEach(x => x.classList.toggle('active', x.dataset.nav === route));
+  $$('.section').forEach(x => x.classList.toggle('active', x.dataset.section === route));
+  $('#page-title').textContent = pageTitles[route] || '';
+  if (route === 'upload') refreshQuota();
+  if (route === 'assets') { loadFolders(); refreshAssets(); }
+  if (route === 'tasks') refreshTasks();
+  if (route === 'drafts') { refreshDraftQuota(); refreshDrafts(); }
+}
+
+window.addEventListener('popstate', (e) => {
+  const route = (e.state && e.state.route) || getRouteFromUrl();
+  activateSection(route);
+});
+
 $$('.nav-item').forEach(btn => btn.addEventListener('click', () => {
-  $$('.nav-item').forEach(x => x.classList.remove('active'));
-  $$('.section').forEach(x => x.classList.remove('active'));
-  btn.classList.add('active');
-  $(`.section[data-section="${btn.dataset.nav}"]`).classList.add('active');
-  $('#page-title').textContent = pageTitles[btn.dataset.nav] || '';
-  if (btn.dataset.nav === 'upload') { refreshQuota(); }
-  if (btn.dataset.nav === 'assets') { refreshAssets(); }
-  if (btn.dataset.nav === 'tasks') refreshTasks();
-  if (btn.dataset.nav === 'drafts') { refreshDraftQuota(); refreshDrafts(); }
+  navigateTo(btn.dataset.nav);
 }));
 
 // ============== Tasks ==============
@@ -621,28 +667,134 @@ async function shareDraft(id) { const ttl = prompt('分享链接有效期（天�
 // ============== Upload ==============
 const ALLOWED_EXT = ['.mp4','.mov','.avi','.mkv','.webm'];
 const MAX_FILE_SIZE = 1073741824; // 1GB
+let currentFolderId = null; // null = 根目录
+
+// Folder management (backend API)
+async function loadFolders() {
+  try {
+    const r = await fetch('/api/folders');
+    const data = await r.json();
+    const folders = data.folders || [];
+    refreshFolderSelects(folders);
+    return folders;
+  } catch (e) { console.error('loadFolders error:', e); return []; }
+}
+
+function refreshFolderSelects(folders) {
+  const uploadSel = $('#upload-folder');
+  const filterSel = $('#filter-folder');
+  if (uploadSel) {
+    const val = uploadSel.value;
+    uploadSel.innerHTML = '<option value="">根目录</option>' +
+      folders.map(f => `<option value="${f.id}">${escapeHtml(getFolderPath(folders, f))}</option>`).join('');
+    uploadSel.value = val;
+  }
+  if (filterSel) {
+    const val = filterSel.value;
+    filterSel.innerHTML = '<option value="">全部文件夹</option><option value="0">根目录（未分类）</option>' +
+      folders.map(f => `<option value="${f.id}">${escapeHtml(getFolderPath(folders, f))}</option>`).join('');
+    filterSel.value = val;
+  }
+}
+
+function getFolderPath(folders, folder) {
+  if (!folder.parent_id) return folder.name;
+  const parent = folders.find(f => f.id === folder.parent_id);
+  return parent ? getFolderPath(folders, parent) + '/' + folder.name : folder.name;
+}
+
+async function createUploadFolder() {
+  const name = prompt('输入文件夹名称：');
+  if (!name || !name.trim()) return;
+  const parentId = $('#upload-folder') ? parseInt($('#upload-folder').value) || null : null;
+  try {
+    const r = await fetch('/api/folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('capcut_token') },
+      body: JSON.stringify({ name: name.trim(), parent_id: parentId })
+    });
+    if (!r.ok) { const d = await r.json(); toast(d.detail || '创建失败', 'error'); return; }
+    const data = await r.json();
+    toast(`文件夹「${name.trim()}」已创建`, 'success');
+    await loadFolders();
+    if ($('#upload-folder')) $('#upload-folder').value = data.folder.id;
+  } catch (e) { toast('创建失败: ' + e.message, 'error'); }
+}
+
+async function createFolder() {
+  const name = prompt('输入新文件夹名称：');
+  if (!name || !name.trim()) return;
+  try {
+    const r = await fetch('/api/folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('capcut_token') },
+      body: JSON.stringify({ name: name.trim(), parent_id: currentFolderId })
+    });
+    if (!r.ok) { const d = await r.json(); toast(d.detail || '创建失败', 'error'); return; }
+    toast(`文件夹「${name.trim()}」已创建`, 'success');
+    await loadFolders();
+    refreshAssets();
+  } catch (e) { toast('创建失败: ' + e.message, 'error'); }
+}
+
+async function deleteFolder(id, name) {
+  if (!confirm(`确认删除文件夹「${name}」？\n文件夹内素材不会被删除，会移回根目录。`)) return;
+  try {
+    const r = await fetch(`/api/folders/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('capcut_token') } });
+    if (!r.ok) { const d = await r.json(); toast(d.detail || '删除失败', 'error'); return; }
+    toast('文件夹已删除', 'success');
+    await loadFolders();
+    refreshAssets();
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+function navigateFolder(folderId) {
+  currentFolderId = folderId;
+  const bc = $('#folder-breadcrumb');
+  if (folderId) {
+    bc.style.display = 'block';
+    // TODO: build breadcrumb path
+    bc.innerHTML = `<span class="small dim">当前位置：</span><a href="#" class="small" onclick="navigateFolder(null); return false;">根目录</a> / <span class="small" style="color: var(--accent);">文件夹 #${folderId}</span>`;
+  } else {
+    bc.style.display = 'none';
+  }
+  refreshAssets();
+}
+
+// Handle drop with folder support
+function handleDrop(event) {
+  event.preventDefault();
+  const zone = $('#drop-zone');
+  zone.style.borderColor = 'var(--line-strong)';
+  zone.style.background = '';
+  handleFiles(event.dataTransfer.files);
+}
+
 async function handleFiles(fileList) {
   const kind = $('#upload-kind').value;
+  const folderId = $('#upload-folder') ? parseInt($('#upload-folder').value) || null : null;
   const queue = $('#upload-queue');
   for (const file of Array.from(fileList)) {
     const ext = '.' + file.name.split('.').pop().toLowerCase();
     if (!ALLOWED_EXT.includes(ext)) { toast(`不支持的文件格式: ${ext}`, 'error'); continue; }
     if (file.size > MAX_FILE_SIZE) { toast(`文件超过 1GB 限制: ${file.name}`, 'error'); continue; }
+
     const itemId = 'up-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
     const itemEl = document.createElement('div');
     itemEl.id = itemId;
     itemEl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;';
     itemEl.innerHTML = `<span class="small mono" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span><span class="small dim">${fmtBytes(file.size)}</span><span class="small dim">${kind === 'main' ? '主视频' : 'B-roll'}</span><div class="progress-bar" style="width:100px;"><div style="width:0%;transition:width .2s;"></div></div><span class="small mono" id="${itemId}-pct">0%</span>`;
     queue.appendChild(itemEl);
-    uploadFile(file, kind, itemId);
+    uploadFile(file, kind, itemId, folderId);
   }
-  // Clear the input so the same file can be selected again
   $('#file-input').value = '';
+  if ($('#folder-input')) $('#folder-input').value = '';
 }
-async function uploadFile(file, kind, itemId) {
+async function uploadFile(file, kind, itemId, folderId) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('kind', kind);
+  if (folderId) formData.append('folder_id', String(folderId));
   try {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/uploads');
@@ -702,19 +854,57 @@ async function refreshAssets() {
   try {
     const source = $('#filter-source').value;
     const kind = $('#filter-kind').value;
+    const folderFilter = $('#filter-folder') ? $('#filter-folder').value : '';
     let url = '/api/assets?limit=500';
     if (source) url += `&source=${source}`;
     if (kind) url += `&kind=${kind}`;
     const r = await fetch(url);
     const data = await r.json();
-    const assets = data.assets || [];
+    let assets = data.assets || [];
+
+    // 前端按文件夹筛选
+    if (folderFilter === '0') {
+      // 根目录：只显示 web_upload 且 folder_id 为 null 的
+      assets = assets.filter(a => a.source === 'web_upload' && !a.folder_id);
+    } else if (folderFilter) {
+      const fid = parseInt(folderFilter);
+      assets = assets.filter(a => a.folder_id === fid);
+    }
+
+    // 加载文件夹列表
+    const foldersR = await fetch('/api/folders');
+    const foldersData = await foldersR.json();
+    const folders = foldersData.folders || [];
+
     const tbody = $('#assets-tbody');
     $('#badge-assets').textContent = assets.length;
-    if (assets.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无素材</td></tr>'; return; }
-    tbody.innerHTML = assets.map(a => {
+
+    // 显示子文件夹（如果在文件夹筛选模式下）
+    let folderRows = '';
+    if (folderFilter && folderFilter !== '0') {
+      const fid = parseInt(folderFilter);
+      const children = folders.filter(f => f.parent_id === fid);
+      folderRows = children.map(f => `<tr style="cursor:pointer;" onclick="document.getElementById('filter-folder').value='${f.id}'; refreshAssets();">
+        <td></td><td>📁 <strong>${escapeHtml(f.name)}</strong></td><td>文件夹</td><td>-</td><td>-</td><td>-</td><td>${fmtTime(f.created_at)}</td>
+        <td><div class="row-actions"><button class="btn small secondary danger" onclick="event.stopPropagation(); deleteFolder(${f.id}, '${escapeHtml(f.name)}')">删</button></div></td>
+      </tr>`).join('');
+    } else if (!folderFilter) {
+      // 显示顶层文件夹
+      const topFolders = folders.filter(f => !f.parent_id);
+      folderRows = topFolders.map(f => `<tr style="cursor:pointer;" onclick="document.getElementById('filter-folder').value='${f.id}'; refreshAssets();">
+        <td></td><td>📁 <strong>${escapeHtml(f.name)}</strong></td><td>文件夹</td><td>-</td><td>-</td><td>-</td><td>${fmtTime(f.created_at)}</td>
+        <td><div class="row-actions"><button class="btn small secondary danger" onclick="event.stopPropagation(); deleteFolder(${f.id}, '${escapeHtml(f.name)}')">删</button></div></td>
+      </tr>`).join('');
+    }
+
+    if (assets.length === 0 && !folderRows) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无素材</td></tr>'; return; }
+    if (assets.length === 0 && folderRows) { tbody.innerHTML = folderRows + '<tr><td colspan="8" class="empty">此文件夹暂无素材</td></tr>'; return; }
+
+    const assetRows = assets.map(a => {
       const sourceLabel = a.source === 'web_upload' ? '<span style="color:var(--accent);">Web上传</span>' : '<span style="color:var(--fg-2);">客户端</span>';
       const kindLabel = a.kind === 'main' ? '主视频' : 'B-roll';
       const canDelete = a.source === 'web_upload';
+      const moveBtn = a.source === 'web_upload' ? `<button class="btn small secondary" onclick="moveAsset(${a.id})">📁</button>` : '';
       return `<tr>
         <td class="mono">${a.id}</td>
         <td class="mono small" title="${escapeHtml(a.name || a.filename || '')}">${escapeHtml(a.name || a.filename || '-')}</td>
@@ -724,11 +914,33 @@ async function refreshAssets() {
         <td class="small">${sourceLabel}</td>
         <td class="small mono">${fmtTime(a.created_at)}</td>
         <td><div class="row-actions">
+          ${moveBtn}
           ${canDelete ? `<button class="btn small secondary danger" onclick="deleteUpload(${a.id})">删</button>` : '<span class="dim small">-</span>'}
         </div></td>
       </tr>`;
     }).join('');
+
+    tbody.innerHTML = folderRows + assetRows;
   } catch (e) { console.error(e); toast('加载素材失败: ' + e.message, 'error'); }
+}
+
+async function moveAsset(assetId) {
+  const folders = await loadFolders();
+  const options = ['根目录 (无文件夹)'].concat(folders.map(f => getFolderPath(folders, f)));
+  const choice = prompt('输入目标文件夹编号（0=根目录）：\n' + options.map((o, i) => `${i}: ${o}`).join('\n'));
+  if (choice === null) return;
+  const idx = parseInt(choice);
+  if (isNaN(idx) || idx < 0 || idx > folders.length) { toast('无效选择', 'warn'); return; }
+  const folderId = idx === 0 ? null : folders[idx - 1].id;
+  try {
+    const r = await fetch(`/api/uploads/${assetId}/move?folder_id=${folderId ?? ''}`, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('capcut_token') }
+    });
+    if (!r.ok) { const d = await r.json(); toast(d.detail || '移动失败', 'error'); return; }
+    toast('已移动', 'success');
+    refreshAssets();
+  } catch (e) { toast('移动失败: ' + e.message, 'error'); }
 }
 async function deleteUpload(id) {
   if (!confirm(`确认删除此素材？`)) return;
@@ -748,8 +960,9 @@ async function changePassword() {
   try { const r = await fetch('/api/auth/change-password', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({old_password: oldPwd, new_password: newPwd}) }); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); toast('密码已修改', 'success'); $('#old-pwd').value = ''; $('#new-pwd').value = ''; $('#confirm-pwd').value = ''; } catch (e) { toast('修改失败: ' + e.message, 'error'); }
 }
 
-// 启动
-refreshQuota();
+// 启动 — 根据 URL 路由初始化页面
+const initialRoute = getRouteFromUrl();
+navigateTo(initialRoute, true);
 setInterval(refreshTasks, 5000);
 fetch('/api/drafts?page=1&page_size=1').then(r => r.json()).then(d => { $('#badge-drafts').textContent = d.total || 0; }).catch(() => {});
 fetch('/api/assets?limit=1').then(r => r.json()).then(d => { $('#badge-assets').textContent = (d.assets || []).length || 0; }).catch(() => {});

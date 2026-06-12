@@ -27,6 +27,7 @@ dependencies = [
     "gunicorn>=21.0",
     "psycopg2-binary>=2.9; platform_system != 'Windows'",  # PG 可选
     "rich>=13.0",
+    "slowapi>=0.1.9",        # 登录限流（防暴力破解）
 ]
 
 [project.optional-dependencies]

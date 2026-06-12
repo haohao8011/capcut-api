@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from . import auth as auth_mod
@@ -149,14 +149,21 @@ def get_asset(
                dependencies=[Depends(auth_mod.get_current_user)])
 def delete_asset(
     aid: int,
+    request: Request,
     user: Annotated[auth_mod.User, Depends(auth_mod.get_current_user)],
     db: Annotated[auth_mod.Session, Depends(auth_mod.get_db)],
 ) -> dict:
+    from .audit import log_audit
     a = db.get(models.Asset, aid)
     if not a:
         raise HTTPException(404, f"资产不存在: {aid}")
     if a.owner_id != user.id and not user.is_admin:
         raise HTTPException(403, "只能删自己的资产")
+    asset_name = a.name
+    asset_kind = a.kind
     db.delete(a)
     db.commit()
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="asset.delete", resource="asset", resource_id=aid,
+              extra={"name": asset_name, "kind": asset_kind})
     return {"deleted": aid}

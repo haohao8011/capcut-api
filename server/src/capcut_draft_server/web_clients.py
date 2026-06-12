@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import desc as _desc, select
 
@@ -79,6 +79,7 @@ def list_clients(
              dependencies=[Depends(auth_mod.get_current_user)])
 def register_client(
     req: RegisterClientReq,
+    request: Request,
     user: Annotated[auth_mod.User, Depends(auth_mod.get_current_user)],
     db: Annotated[auth_mod.Session, Depends(auth_mod.get_db)],
 ) -> dict:
@@ -87,6 +88,7 @@ def register_client(
     owner_id 默认 = 当前用户（即"自己用的客户端"）。
     非 admin 想给别人注册会被拒。
     """
+    from .audit import log_audit
     if not req.name.strip():
         raise HTTPException(400, "name 不能为空")
     # 决定 owner_id：req.owner_id > user.id
@@ -106,6 +108,9 @@ def register_client(
     db.add(c)
     db.commit()
     db.refresh(c)
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="client.create", resource="client", resource_id=c.id,
+              extra={"name": c.name, "owner_id": owner_id, "version": req.version})
     return {
         **c.to_dict(),
         "token": plain,  # ★ 明文只此一次返回，客户端要立刻保存
@@ -128,16 +133,23 @@ def get_client(
                dependencies=[Depends(auth_mod.get_current_user)])
 def delete_client(
     cid: int,
+    request: Request,
     user: Annotated[auth_mod.User, Depends(auth_mod.get_current_user)],
     db: Annotated[auth_mod.Session, Depends(auth_mod.get_db)],
 ) -> dict:
+    from .audit import log_audit
     c = db.get(models.Client, cid)
     if not c:
         raise HTTPException(404, f"客户端不存在: {cid}")
     if c.owner_id and c.owner_id != user.id and not user.is_admin:
         raise HTTPException(403, "只能删自己的客户端或管理员删任意")
+    client_name = c.name
+    client_owner = c.owner_id
     db.delete(c)
     db.commit()
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="client.delete", resource="client", resource_id=cid,
+              extra={"deleted_name": client_name, "deleted_owner_id": client_owner})
     return {"deleted": cid}
 
 
@@ -145,9 +157,12 @@ def delete_client(
              dependencies=[Depends(auth_mod.require_admin)])
 def rotate_client_token(
     cid: int,
+    request: Request,
+    user: Annotated[auth_mod.User, Depends(auth_mod.require_admin)],
     db: Annotated[auth_mod.Session, Depends(auth_mod.get_db)],
 ) -> dict:
     """管理员：重置客户端 token（旧 token 立即失效）。"""
+    from .audit import log_audit
     c = db.get(models.Client, cid)
     if not c:
         raise HTTPException(404, f"客户端不存在: {cid}")
@@ -155,6 +170,9 @@ def rotate_client_token(
     c.token_hash = hashed
     c.is_online = False
     db.commit()
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="client.rotate_token", resource="client", resource_id=cid,
+              extra={"name": c.name, "owner_id": c.owner_id})
     return {"id": cid, "token": plain, "warning": "旧 token 已失效"}
 
 

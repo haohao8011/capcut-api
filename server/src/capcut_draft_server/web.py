@@ -30,7 +30,20 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import auth as auth_mod
 from . import db_models
-from . import web_assets, web_clients, web_drafts, web_tasks, web_uploads
+from . import web_assets, web_clients, web_drafts, web_folders, web_tasks, web_uploads
+
+# -------- 限流器（防暴力破解） --------
+# 默认 5 次/分钟/IP；CAPCUT_LOGIN_RATE_LIMIT=0 可关闭（测试用）
+_LOGIN_RATE_LIMIT = os.environ.get("CAPCUT_LOGIN_RATE_LIMIT", "5/minute")
+_limiter = None
+if _LOGIN_RATE_LIMIT and _LOGIN_RATE_LIMIT != "0":
+    try:
+        from slowapi import Limiter
+        from slowapi.errors import RateLimitExceeded
+        from slowapi.util import get_remote_address
+        _limiter = Limiter(key_func=get_remote_address)
+    except ImportError:  # 慢api 没装就降级为不限流
+        log.warning("slowapi 未安装，登录限流已禁用")
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +75,19 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# 慢api 限流器注册（如果启用了）
+if _limiter is not None:
+    app.state.limiter = _limiter
+
+    @app.exception_handler(RateLimitExceeded)
+    async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+        # 防止弱密码被暴力破解：超限后 429
+        log.warning("登录限流触发: %s %s", request.client.host if request.client else "?", exc.detail)
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"请求过于频繁：{exc.detail}。请稍后再试。"},
+        )
+
 
 @app.exception_handler(StarletteHTTPException)
 async def custom_404_handler(request: Request, exc: StarletteHTTPException) -> HTMLResponse:
@@ -87,10 +113,15 @@ async def _unhandled_exception(request: Request, exc: Exception) -> JSONResponse
 
 
 def _setup_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    """日志初始化：默认纯文本；CAPCUT_LOG_JSON=1 切 JSON 结构化（企业 ELK/Loki 友好）。"""
+    from .log_json import setup_json_logging
+    if os.environ.get("CAPCUT_LOG_JSON", "0") == "1":
+        setup_json_logging()
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
 
 
 # -------- 云端定期清理（草稿是用户资产不删；只清 task_logs + 离线 client） --------
@@ -99,6 +130,7 @@ def _setup_logging() -> None:
 CLEANUP_INTERVAL_SEC = int(os.environ.get("CAPCUT_CLEANUP_INTERVAL", "3600"))   # 1h
 CLEANUP_LOG_MAX_AGE = int(os.environ.get("CAPCUT_CLEANUP_LOG_AGE", "2592000"))  # 30d
 CLEANUP_OFFLINE_CLIENT_DAYS = int(os.environ.get("CAPCUT_CLEANUP_OFFLINE_DAYS", "30"))  # 30d 未心跳
+CLEANUP_AUDIT_RETENTION_DAYS = int(os.environ.get("CAPCUT_AUDIT_RETENTION_DAYS", "180"))  # 审计保留 6 个月（合规）
 
 
 def _cleanup_db_once(db) -> dict:
@@ -124,6 +156,12 @@ def _cleanup_db_once(db) -> dict:
     return {"logs_deleted": n_logs, "clients_marked_offline": n_clients}
 
 
+def _cleanup_audit_once(db) -> int:
+    """清超过保留期的审计日志。"""
+    from .audit import cleanup_old_audit_logs
+    return cleanup_old_audit_logs(db, CLEANUP_AUDIT_RETENTION_DAYS)
+
+
 def _cleanup_loop() -> None:
     """后台线程：每 CLEANUP_INTERVAL_SEC 跑一次清理。"""
     log.info("[cleanup] 启动定期清理线程（间隔 %ds）", CLEANUP_INTERVAL_SEC)
@@ -137,6 +175,10 @@ def _cleanup_loop() -> None:
                 log.info("[cleanup] 本轮: 日志 %d 条 / client %d 个",
                          r2.get("logs_deleted", 0),
                          r2.get("clients_marked_offline", 0))
+            # 审计日志清理
+            n_audit = _cleanup_audit_once(_a.SessionLocal())
+            if n_audit:
+                log.info("[cleanup] 本轮: 审计日志 %d 条", n_audit)
         except Exception as e:
             log.exception("[cleanup] 出错（继续下一轮）: %s", e)
 
@@ -157,10 +199,7 @@ def _startup() -> None:
 
 # 内部静态（404.html、favicon.jpg）
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-# 管理后台 UI（独立目录，前后端分离）
-app.mount("/admin", StaticFiles(directory=str(ADMIN_DIR), html=True), name="admin")
-# 用户工作台 UI（独立目录，前后端分离）
-app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+# 管理后台 UI 和用户工作台 UI 用 SPA catch-all 路由处理（见下方）
 
 # -------- C/S 路由（拆分文件） --------
 app.include_router(web_clients.router)
@@ -168,6 +207,7 @@ app.include_router(web_assets.router)
 app.include_router(web_tasks.router)
 app.include_router(web_drafts.router)
 app.include_router(web_uploads.router)
+app.include_router(web_folders.router)
 
 
 # -------- 重定向路由（保持向后兼容） --------
@@ -194,6 +234,47 @@ def console_login_redirect():
 def login_redirect():
     """用户登录 → /app/login.html。"""
     return RedirectResponse(url="/app/login.html")
+
+
+# -------- SPA History 路由（catch-all） --------
+# 前端用 History API 路由，刷新页面时需要服务端返回 index.html
+# 不使用 StaticFiles(html=True) mount，因为 mount 会拦截所有请求导致 catch-all 失效
+
+from fastapi.responses import FileResponse
+
+
+def _serve_spa(base_dir: Path, path: str):
+    """SPA 路由：优先返回真实文件，否则返回 index.html。"""
+    if path and path != "/":
+        real_file = base_dir / path
+        if real_file.is_file():
+            return FileResponse(str(real_file))
+    index = base_dir / "index.html"
+    if index.is_file():
+        return HTMLResponse(content=index.read_text(encoding="utf-8"))
+    raise HTTPException(404, "index.html not found")
+
+
+@app.get("/app", include_in_schema=False)
+@app.get("/app/", include_in_schema=False)
+def spa_frontend_root():
+    return _serve_spa(FRONTEND_DIR, "/")
+
+
+@app.get("/app/{path:path}", include_in_schema=False)
+def spa_frontend(path: str):
+    return _serve_spa(FRONTEND_DIR, path)
+
+
+@app.get("/admin", include_in_schema=False)
+@app.get("/admin/", include_in_schema=False)
+def spa_admin_root():
+    return _serve_spa(ADMIN_DIR, "/")
+
+
+@app.get("/admin/{path:path}", include_in_schema=False)
+def spa_admin(path: str):
+    return _serve_spa(ADMIN_DIR, path)
 
 
 # -------- 工作流管理 --------
@@ -330,15 +411,35 @@ class ResetPwdReq(BaseModel):
     new_password: str
 
 
+# 登录限流装饰器（仅在启用了 slowapi 时生效；测试时设 CAPCUT_LOGIN_RATE_LIMIT=0 关闭）
+def _login_rate_limit(func):
+    if _limiter is not None and _LOGIN_RATE_LIMIT and _LOGIN_RATE_LIMIT != "0":
+        return _limiter.limit(_LOGIN_RATE_LIMIT)(func)
+    return func
+
+
 @app.post("/api/auth/login")
-def auth_login(req: LoginReq, db=Depends(auth_mod.get_db)) -> dict:
-    """公开：用户名+密码登录，返回 access + refresh token。"""
+@_login_rate_limit
+def auth_login(req: LoginReq, request: Request, db=Depends(auth_mod.get_db)) -> dict:
+    """公开：用户名+密码登录，返回 access + refresh token。
+
+    限流（防暴力破解）：默认 5 次/分钟/IP，通过 CAPCUT_LOGIN_RATE_LIMIT 调。
+    测试时设 CAPCUT_LOGIN_RATE_LIMIT=0 关闭。
+    """
     from datetime import datetime, timezone
+    from .audit import log_audit
     u = auth_mod.authenticate_user(db, req.username, req.password)
     if not u:
+        # 失败登录也要记审计（合规：异常登录检测）
+        log_audit(db, request=request, actor_id=None, actor_type="anonymous",
+                  action="user.login", status="failure",
+                  extra={"attempted_username": req.username})
         raise HTTPException(401, "用户名或密码错误")
     u.last_login_at = datetime.now(timezone.utc)
     db.commit()
+    log_audit(db, request=request, actor_id=u.id, actor_type="user",
+              action="user.login", status="success",
+              extra={"is_admin": u.is_admin})
     return {
         "access_token": auth_mod.make_token(u.id, u.username, u.is_admin,
                                              kind="access", ttl=auth_mod.ACCESS_TTL_SEC),
@@ -389,11 +490,15 @@ def auth_me(user: auth_mod.User = Depends(auth_mod.get_current_user)) -> dict:
           dependencies=[Depends(auth_mod.get_current_user)])
 def auth_change_password(
     req: ChangePwdReq,
+    request: Request,
     user: auth_mod.User = Depends(auth_mod.get_current_user),
     db=Depends(auth_mod.get_db),
 ) -> dict:
     """需登录：改自己的密码。"""
+    from .audit import log_audit
     auth_mod.change_password(db, user, req.old_password, req.new_password)
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="user.password_change", status="success")
     return {"ok": True}
 
 
@@ -420,10 +525,19 @@ def list_users(db=Depends(auth_mod.get_db)) -> dict:
 @app.post("/api/auth/users",
           dependencies=[Depends(auth_mod.require_admin)],
           status_code=201)
-def admin_create_user(req: CreateUserReq, db=Depends(auth_mod.get_db)) -> dict:
+def admin_create_user(
+    req: CreateUserReq,
+    request: Request,
+    user: auth_mod.User = Depends(auth_mod.require_admin),
+    db=Depends(auth_mod.get_db),
+) -> dict:
     """管理员：新建用户。"""
+    from .audit import log_audit
     u = auth_mod.create_user(db, req.username, req.password,
                               email=req.email, is_admin=req.is_admin)
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="user.create", resource="user", resource_id=u.id,
+              extra={"username": u.username, "is_admin": u.is_admin})
     return {"id": u.id, "username": u.username, "is_admin": u.is_admin}
 
 
@@ -431,10 +545,12 @@ def admin_create_user(req: CreateUserReq, db=Depends(auth_mod.get_db)) -> dict:
             dependencies=[Depends(auth_mod.require_admin)])
 def admin_delete_user(
     uid: int,
+    request: Request,
     user: auth_mod.User = Depends(auth_mod.require_admin),
     db=Depends(auth_mod.get_db),
 ) -> dict:
     """管理员：删除用户（不能删自己）。"""
+    from .audit import log_audit
     if uid == user.id:
         raise HTTPException(400, "不能删除自己")
     target = db.get(auth_mod.User, uid)
@@ -442,15 +558,24 @@ def admin_delete_user(
         raise HTTPException(404, f"用户不存在: {uid}")
     if target.username == "xiaoma":
         raise HTTPException(400, "不能删除内置默认管理员 xiaoma")
+    target_username = target.username
     db.delete(target)
     db.commit()
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="user.delete", resource="user", resource_id=uid,
+              extra={"deleted_username": target_username})
     return {"deleted": uid}
 
 
 @app.post("/api/auth/users/{uid}/reset-password",
           dependencies=[Depends(auth_mod.require_admin)])
-def admin_reset_password(uid: int, req: ResetPwdReq, db=Depends(auth_mod.get_db)) -> dict:
+def admin_reset_password(
+    uid: int, req: ResetPwdReq, request: Request,
+    user: auth_mod.User = Depends(auth_mod.require_admin),
+    db=Depends(auth_mod.get_db),
+) -> dict:
     """管理员：重置某用户密码。"""
+    from .audit import log_audit
     target = db.get(auth_mod.User, uid)
     if not target:
         raise HTTPException(404, f"用户不存在: {uid}")
@@ -458,6 +583,9 @@ def admin_reset_password(uid: int, req: ResetPwdReq, db=Depends(auth_mod.get_db)
         raise HTTPException(400, "新密码太短（至少 6 位）")
     target.password_hash = auth_mod.hash_pwd(req.new_password)
     db.commit()
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="user.password_reset", resource="user", resource_id=uid,
+              extra={"target_username": target.username})
     return {"ok": True, "uid": uid}
 
 

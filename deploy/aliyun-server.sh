@@ -35,9 +35,17 @@ sudo -u $APP_USER $APP_DIR/.venv/bin/pip install --upgrade pip -i https://pypi.t
 # monorepo 拆 3 个子包（common + server），gunicorn 已在 server/pyproject.toml deps 里
 sudo -u $APP_USER $APP_DIR/.venv/bin/pip install -e $APP_DIR/common -e $APP_DIR/server -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-echo "==> 5. 初始化数据目录"
+echo "==> 5. 初始化数据目录 + 备份目录"
 mkdir -p /var/lib/capcut-draft/{drafts,logs}
-chown -R $APP_USER:$APP_USER /var/lib/capcut-draft
+mkdir -p /var/backups/capcut
+chown -R $APP_USER:$APP_USER /var/lib/capcut-draft /var/backups/capcut
+
+echo "==> 5b. 装 daily 备份 cron（capcut.db.gz 保留 7 天）"
+cat > /etc/cron.d/capcut-backup <<'CRON'
+# 每天凌晨 3 点备份 SQLite + 草稿，保留 7 天
+0 3 * * * root /bin/bash -c 'set -e; cd /var/lib/capcut-draft && /opt/capcut-draft/.venv/bin/python -c "import sqlite3; con=sqlite3.connect(\"capcut.db\"); con.execute(\"BEGIN IMMEDIATE;\"); con.execute(\"VACUUM INTO '\''/var/backups/capcut/snapshot.db'\''\"); con.close()" && gzip -c /var/backups/capcut/snapshot.db > /var/backups/capcut/capcut.db.$(date +\%Y\%m\%d_\%H\%M\%S).gz && rm -f /var/backups/capcut/snapshot.db && tar -czf /var/backups/capcut/drafts.$(date +\%Y\%m\%d_\%H\%M\%S).tgz -C /var/lib/capcut-draft drafts/ && find /var/backups/capcut -name "capcut.db.*.gz" -mtime +7 -delete && find /var/backups/capcut -name "drafts.*.tgz" -mtime +7 -delete' >/var/log/capcut-backup.log 2>&1
+CRON
+chmod 644 /etc/cron.d/capcut-backup
 
 echo "==> 6. 写 .env（如果还没有）"
 if [ ! -f $APP_DIR/.env ]; then
@@ -46,6 +54,9 @@ if [ ! -f $APP_DIR/.env ]; then
 CAPCUT_JWT_SECRET=$(openssl rand -hex 32)
 CAPCUT_DB_URL=sqlite:////var/lib/capcut-draft/capcut.db
 CAPCUT_DRAFTS_DIR=/var/lib/capcut-draft/drafts
+# JSON 结构化日志（企业 ELK/Loki 友好；按需关闭）
+CAPCUT_LOG_JSON=1
+CAPCUT_LOG_FILE=/var/lib/capcut-draft/logs/app.log
 CAPCUT_LOG_DIR=/var/lib/capcut-draft/logs
 # 清理参数
 CAPCUT_CLEANUP_INTERVAL=3600
@@ -90,7 +101,13 @@ systemctl restart $SERVICE_NAME
 echo "    服务已启动：systemctl status $SERVICE_NAME"
 
 echo "==> 8. nginx 反代"
-cat > /etc/nginx/sites-available/$SERVICE_NAME <<EOF
+# 默认 placeholder 域名时跳过 nginx（生产前请用真域名重跑：./deploy/aliyun-server.sh your.domain.com）
+if [ "$DOMAIN" = "capcut.example.com" ]; then
+  echo "    !!! 默认 placeholder 域名，跳过 nginx 配置"
+  echo "    !!! 生产部署：./deploy/aliyun-server.sh your-real-domain.com"
+  echo "    !!! gunicorn 暂以 http://ECS_IP:8000 直连（需在阿里云安全组放行 8000）"
+else
+  cat > /etc/nginx/sites-available/$SERVICE_NAME <<EOF
 server {
     listen 80;
     server_name $DOMAIN;
@@ -107,11 +124,19 @@ server {
     }
 }
 EOF
-ln -sf /etc/nginx/sites-available/$SERVICE_NAME /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
+  ln -sf /etc/nginx/sites-available/$SERVICE_NAME /etc/nginx/sites-enabled/
+  nginx -t && systemctl reload nginx
+  echo "    nginx 已配置 → $DOMAIN"
 
-echo "==> 9. HTTPS (Let's Encrypt)"
-certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN || echo "   证书签发失败（可能 DNS 未解析），可手动跑 certbot"
+  echo "==> 9. HTTPS (Let's Encrypt)"
+  if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+    echo "    证书已存在，跳过签发"
+  else
+    certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN \
+      && echo "    HTTPS 已签发 → https://$DOMAIN" \
+      || echo "    证书签发失败（可能 DNS 未解析），可手动跑 certbot"
+  fi
+fi
 
 echo
 echo "=========================================="

@@ -362,9 +362,11 @@ def download_draft(
 @router.delete("/api/drafts/{draft_id}")
 def delete_draft(
     draft_id: int,
+    request: Request,
     user: auth_mod.User = Depends(auth_mod.get_current_user),
     db: Session = Depends(auth_mod.get_db),
 ) -> dict:
+    from .audit import log_audit
     d = db.get(Draft, draft_id)
     if not d:
         raise HTTPException(404, "草稿不存在")
@@ -383,6 +385,9 @@ def delete_draft(
     db.query(DraftShare).filter(DraftShare.draft_id == d.id).delete()
     db.delete(d)
     db.commit()
+    log_audit(db, request=request, actor_id=user.id, actor_type="user",
+              action="draft.delete", resource="draft", resource_id=draft_id,
+              extra={"filename": d.filename, "size": d.size, "owner_id": d.owner_id})
 
     log.info("[drafts] owner=%s 删除草稿 id=%s name=%s", user.username, d.id, d.filename)
     return {

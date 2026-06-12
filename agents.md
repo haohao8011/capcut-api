@@ -96,6 +96,7 @@ CLI 和 Web 客户端（C/S 模式）共用底层 `builder.py` / `asr.py` / `cut
 | `clients` | `db_models.py` | 员工机器注册：name/hostname/owner_id/token_hash |
 | `assets` | `db_models.py` | 客户端扫盘资产元数据：path/name/kind/size/duration/mtime（**不含文件内容**） |
 | `uploaded_assets` | `db_models.py` | ★ Web 上传素材：owner_id/filename/storage_path/kind/size/review_status/reviewed_by |
+| `folders` | `db_models.py` | ★ 素材文件夹：owner_id/name/parent_id（支持多层嵌套） |
 | `tasks` | `db_models.py` | 任务派发：main_asset_id/main_upload_id/broll_asset_ids/broll_upload_ids/options/status/progress/result_path |
 | `task_logs` | `db_models.py` | 任务日志：ts/level/message（30 天后自动清） |
 | `setup_codes` | `db_models.py` | 一次性 6 位安装码（wizard 用）：code/name_hint/expires_at/redeemed_at |
@@ -147,6 +148,7 @@ capcut-api/
 │       ├── web_clients.py        #   /api/clients/* （注册/心跳/列表/删/重置 token/wizard）
 │       ├── web_assets.py         #   /api/assets/* （合并查询 UploadedAsset + Asset，带 source 字段）
 │       ├── web_uploads.py        #   ★ /api/uploads/* + /api/admin/review/* + /api/admin/stats
+│       ├── web_folders.py        #   ★ /api/folders/* （CRUD + 树形结构）
 │       ├── web_tasks.py          #   /api/tasks/* （CRUD + 领取/进度/完成/失败/取消/重试 + 双来源素材）
 │       ├── web_drafts.py         #   ★ /api/drafts/* + /share/* （上传/列表/下载/删/share/公开页）
 │       └── static/
@@ -221,12 +223,23 @@ capcut-api/
 ### 素材上传
 | 端点 | 方法 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
-| `/api/uploads` | POST | user | multipart 上传视频（白名单格式，≤1GB，检查配额） |
-| `/api/uploads` | GET | user | 列当前用户上传的素材 |
+| `/api/uploads` | POST | user | multipart 上传视频（白名单格式，≤1GB，检查配额，支持 folder_id） |
+| `/api/uploads` | GET | user | 列当前用户上传的素材（支持 folder_id 筛选） |
 | `/api/uploads/quota` | GET | user | 素材配额：used/quota/warning(>80%) |
 | `/api/uploads/{id}` | GET/DELETE | user | 详情/删除（DB+磁盘） |
 | `/api/uploads/{id}/file` | GET | user | 下载/流式获取文件 |
 | `/api/uploads/{id}/download` | GET | cap_token | Worker 从服务器下载素材 |
+| `/api/uploads/{id}/move` | PATCH | user | 移动素材到指定文件夹（folder_id=null 移到根目录） |
+
+### 文件夹
+| 端点 | 方法 | 鉴权 | 说明 |
+| --- | --- | --- | --- |
+| `/api/folders` | POST | user | 创建文件夹（name + parent_id） |
+| `/api/folders` | GET | user | 列当前用户所有文件夹（平铺） |
+| `/api/folders/tree` | GET | user | 文件夹树形结构 |
+| `/api/folders/{id}` | GET | user | 文件夹详情 + 子文件夹 + 内容 |
+| `/api/folders/{id}` | PUT | user | 重命名文件夹 |
+| `/api/folders/{id}` | DELETE | user | 删除文件夹（子文件夹级联删，素材 folder_id 置空） |
 
 ### Admin 审核 & 统计
 | 端点 | 方法 | 鉴权 | 说明 |
@@ -283,6 +296,8 @@ capcut-api/
 - **server/ 纯 REST API**：不再包含任何 HTML 渲染逻辑
 - **admin/ 管理后台 UI**：`StaticFiles(html=True)` 挂载到 `/admin`
 - **frontend/ 用户工作台 UI**：`StaticFiles(html=True)` 挂载到 `/app`
+- **History 路由**：前端使用 History API（pushState），URL 如 `/app/upload`、`/app/assets`、`/app/tasks`、`/app/drafts`、`/app/settings`
+- **SPA catch-all**：服务端 `/app/{path}` 返回 index.html（真实文件优先），支持刷新页面不丢失路由
 - **重定向保持向后兼容**：`/` → `/app/`、`/console` → `/admin/`、`/login` → `/app/login.html`、`/console/login` → `/admin/login.html`
 
 ### 侧栏布局（admin + frontend 统一）
@@ -371,20 +386,24 @@ capcut-api/
 
 ## 部署命令
 
-### 服务端升级
+### 本地 SSH 密钥
+- 密钥路径：`D:\Offices\三鼎.pem`
+
+### 服务端升级（手动同步，无 git remote）
 ```bash
-ssh root@8.129.83.166
-cd /opt/capcut-draft
-git pull
-.venv/bin/pip install -e .[server] -i https://pypi.tuna.tsinghua.edu.cn/simple
-sudo systemctl restart capcut-server
-systemctl status capcut-server
+# 1. 本地打包代码（排除 .venv, .git, __pycache__, data/）
+tar -czf deploy.tar.gz --exclude='.venv' --exclude='.venv-client' --exclude='.git' --exclude='__pycache__' --exclude='.pytest_cache' --exclude='data' --exclude='*.db' .
+
+# 2. 上传到服务器
+scp -i "D:\Offices\三鼎.pem" deploy.tar.gz root@8.129.83.166:/opt/capcut-draft/
+
+# 3. SSH 到服务器解压并重启
+ssh -i "D:\Offices\三鼎.pem" root@8.129.83.166 "cd /opt/capcut-draft && tar -xzf deploy.tar.gz && .venv/bin/pip install -e .[server] -i https://pypi.tuna.tsinghua.edu.cn/simple && sudo systemctl restart capcut-server && systemctl status capcut-server"
 ```
 
 ### 检查日志
 ```bash
-journalctl -u capcut-server -f
-journalctl -u capcut-server --since "1 hour ago"
+ssh -i "D:\Offices\三鼎.pem" root@8.129.83.166 "journalctl -u capcut-server --since '1 hour ago' -f"
 ```
 
 ## 已知问题 / 进度
@@ -455,10 +474,20 @@ journalctl -u capcut-server --since "1 hour ago"
   - Task 支持双来源素材：`main_asset_id`（客户端扫盘）+ `main_upload_id`（Web 上传）
   - `web_assets.py` 合并查询两张表，每条带 `source` 字段区分
   - Frontend 工作台：新增上传素材 + 素材库 section，配额双进度条，拖拽上传
-  - Admin 管理后台：新增数据概览 + 素材审核 section，删除“新建任务”按钮
+  - Admin 管理后台：新增数据概览 + 素材审核 section，删除"新建任务"按钮
   - 访问隔离：删除前后端交叉跳转链接，Admin 只能直接输入网址访问
   - 客户端 Worker 适配：从服务器下载素材到本地缓存目录
   - 配额分离：素材 3GB + 草稿 2GB = 5GB 总计
+
+- [x] ★ **History 路由 + 文件夹系统**（2026-06-12）：
+  - 前端改为 History API 路由：`/app/upload`、`/app/assets`、`/app/tasks`、`/app/drafts`、`/app/settings`
+  - 服务端 SPA catch-all：`/app/{path}` 返回 index.html（真实文件优先）
+  - 新增 `folders` 表（支持多层嵌套，`parent_id` 指向父文件夹）
+  - 新增 `web_folders.py`：CRUD + 树形结构 API
+  - `uploaded_assets` 表新增 `folder_id` 列（外键关联 folders）
+  - 素材库：显示文件夹列表，点击进入文件夹，支持新建/删除文件夹
+  - 上传素材：可选择目标文件夹，支持文件夹上传
+  - 素材移动：可将素材移动到指定文件夹
 
 ### 未做 / 待办
 - [ ] 真实即创视频端到端测试（需要用户提供素材）

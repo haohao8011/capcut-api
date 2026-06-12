@@ -140,6 +140,7 @@ async def upload_file(
     kind: Annotated[str, Form()] = "main",
     name: Annotated[Optional[str], Form()] = None,
     duration: Annotated[Optional[float], Form()] = None,
+    folder_id: Annotated[Optional[int], Form()] = None,
     user: auth_mod.User = Depends(auth_mod.get_current_user),
     db: Session = Depends(auth_mod.get_db),
 ) -> dict:
@@ -148,6 +149,7 @@ async def upload_file(
     - 白名单：.mp4/.mov/.avi/.mkv/.webm
     - 单文件 ≤ 1GB（CAPCUT_UPLOAD_MAX_BYTES）
     - 配额检查：已用 + 本次 > quota → 413
+    - folder_id：可选，指定素材放到哪个文件夹
     """
     if not file.filename:
         raise HTTPException(400, "缺少文件名")
@@ -161,6 +163,13 @@ async def upload_file(
 
     if kind not in ("main", "broll"):
         raise HTTPException(400, "kind 必须是 main 或 broll")
+
+    # 验证 folder_id
+    if folder_id is not None:
+        from .db_models import Folder
+        folder = db.get(Folder, folder_id)
+        if not folder or folder.owner_id != user.id:
+            raise HTTPException(404, "文件夹不存在")
 
     safe_name = _safe_filename(name or file.filename)
     dest = _upload_path(user.id, safe_name)
@@ -238,6 +247,7 @@ async def upload_file(
 
     ua = UploadedAsset(
         owner_id=user.id,
+        folder_id=folder_id,
         filename=safe_name,
         storage_path=storage_path,
         kind=kind,
@@ -278,6 +288,7 @@ def list_uploads(
     db: Session = Depends(auth_mod.get_db),
     kind: Optional[str] = Query(None, description="按类型筛选: main/broll"),
     review_status: Optional[str] = Query(None, description="审核状态筛选"),
+    folder_id: Optional[int] = Query(None, description="按文件夹筛选"),
 ) -> dict:
     """列出当前用户上传的素材。"""
     q = select(UploadedAsset).where(UploadedAsset.owner_id == user.id)
@@ -285,9 +296,36 @@ def list_uploads(
         q = q.where(UploadedAsset.kind == kind)
     if review_status:
         q = q.where(UploadedAsset.review_status == review_status)
+    if folder_id is not None:
+        q = q.where(UploadedAsset.folder_id == folder_id)
     q = q.order_by(UploadedAsset.id.desc())
     items = db.scalars(q).all()
     return {"assets": [a.to_dict() for a in items]}
+
+
+@router.patch("/api/uploads/{aid}/move")
+def move_asset_to_folder(
+    aid: int,
+    folder_id: Optional[int] = None,
+    user: auth_mod.User = Depends(auth_mod.get_current_user),
+    db: Session = Depends(auth_mod.get_db),
+) -> dict:
+    """移动素材到指定文件夹（folder_id=null 表示移到根目录）。"""
+    ua = db.get(UploadedAsset, aid)
+    if not ua:
+        raise HTTPException(404, "素材不存在")
+    if ua.owner_id != user.id:
+        raise HTTPException(403, "只能移动自己的素材")
+
+    if folder_id is not None:
+        from .db_models import Folder
+        folder = db.get(Folder, folder_id)
+        if not folder or folder.owner_id != user.id:
+            raise HTTPException(404, "目标文件夹不存在")
+
+    ua.folder_id = folder_id
+    db.commit()
+    return {"ok": True, "asset": ua.to_dict()}
 
 
 # -------- 用户端：配额 --------
