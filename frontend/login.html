@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · capcut-draft</title>
+<script>
+// 主题初始化（在渲染前执行，避免闪烁）
+(function(){
+  var t=localStorage.getItem('capcut_theme');
+  if(!t)t=window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark';
+  document.documentElement.setAttribute('data-theme',t);
+})();
+</script>
+<style>
+  :root {
+    --bg: #06080d;
+    --card-bg: rgba(16, 19, 30, .72);
+    --card-border: rgba(255,255,255,.06);
+    --fg: #e8eaf0; --fg-dim: #6c7385; --fg-muted: #3a3f4f;
+    --accent: #00d4ff; --accent-glow: rgba(0,212,255,.35);
+    --danger: #ff4d6d;
+    --input-bg: rgba(255,255,255,.04); --input-border: rgba(255,255,255,.08);
+    --input-focus-bg: rgba(255,255,255,.06);
+    --shadow-card: 0 20px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+    --shadow-card-hover: 0 20px 60px rgba(0,0,0,.5);
+    --toast-bg: rgba(16,19,30,.9); --toast-border: rgba(255,255,255,.08);
+    --grid-line: rgba(255,255,255,.02);
+    --orb-opacity: .45;
+    --toggle-bg: rgba(255,255,255,.08);
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", monospace;
+    --sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  }
+  [data-theme="light"] {
+    --bg: #f0f2f5;
+    --card-bg: rgba(255,255,255,.82);
+    --card-border: rgba(0,0,0,.08);
+    --fg: #1a1d26; --fg-dim: #6b7280; --fg-muted: #9ca3af;
+    --accent: #0891b2; --accent-glow: rgba(8,145,178,.25);
+    --danger: #dc2626;
+    --input-bg: rgba(255,255,255,.9); --input-border: rgba(0,0,0,.1);
+    --input-focus-bg: #fff;
+    --shadow-card: 0 20px 60px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.06);
+    --shadow-card-hover: 0 20px 60px rgba(0,0,0,.12);
+    --toast-bg: rgba(255,255,255,.95); --toast-border: rgba(0,0,0,.06);
+    --grid-line: rgba(0,0,0,.04);
+    --orb-opacity: .2;
+    --toggle-bg: rgba(0,0,0,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--sans);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── animated mesh background ── */
+  .bg-canvas { position: fixed; inset: 0; z-index: 0; }
+  .bg-orb {
+    position: absolute; border-radius: 50%; filter: blur(100px); opacity: var(--orb-opacity);
+    animation: float 18s ease-in-out infinite alternate;
+  }
+  .bg-orb.a { width: 520px; height: 520px; background: radial-gradient(circle, #00d4ff, transparent 70%); top: -10%; left: -8%; animation-delay: 0s; }
+  .bg-orb.b { width: 400px; height: 400px; background: radial-gradient(circle, #7c3aed, transparent 70%); bottom: -12%; right: -6%; animation-delay: -6s; }
+  .bg-orb.c { width: 300px; height: 300px; background: radial-gradient(circle, #0ea5e9, transparent 70%); top: 50%; left: 55%; animation-delay: -12s; }
+  @keyframes float {
+    0%   { transform: translate(0, 0) scale(1); }
+    33%  { transform: translate(40px, -30px) scale(1.08); }
+    66%  { transform: translate(-20px, 20px) scale(.95); }
+    100% { transform: translate(10px, -10px) scale(1.02); }
+  }
+
+  /* grid overlay */
+  .bg-grid {
+    position: fixed; inset: 0; z-index: 1;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black, transparent);
+  }
+
+  /* ── card ── */
+  .wrap { position: relative; z-index: 2; width: 100%; max-width: 420px; padding: 20px; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 20px;
+    padding: 40px 36px 36px;
+    backdrop-filter: blur(40px) saturate(1.4);
+    -webkit-backdrop-filter: blur(40px) saturate(1.4);
+    box-shadow: var(--shadow-card);
+    animation: card-in .6s cubic-bezier(.16,1,.3,1) both;
+  }
+  @keyframes card-in {
+    from { opacity: 0; transform: translateY(24px) scale(.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* brand */
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; }
+  .logo {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent), #4a8df8);
+    display: grid; place-items: center; font-weight: 800; font-size: 20px; color: #0a0b0e;
+    box-shadow: 0 0 28px var(--accent-glow);
+    animation: pulse-glow 3s ease-in-out infinite;
+  }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 28px var(--accent-glow); }
+    50%      { box-shadow: 0 0 44px var(--accent-glow), 0 0 80px rgba(0,212,255,.12); }
+  }
+  .brand h1 { font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+  .brand small { display: block; font-family: var(--mono); color: var(--fg-dim); font-size: 11px; margin-top: 3px; letter-spacing: 1.5px; text-transform: uppercase; }
+
+  /* form */
+  .field { margin-bottom: 18px; }
+  .field label {
+    display: block; font-size: 11px; font-family: var(--mono); color: var(--fg-dim);
+    letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .field input {
+    width: 100%; background: var(--input-bg); border: 1px solid var(--input-border);
+    color: var(--fg); padding: 12px 16px; border-radius: 10px;
+    font-family: var(--mono); font-size: 14px;
+    transition: all .2s;
+  }
+  .field input::placeholder { color: var(--fg-muted); }
+  .field input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,.1), 0 0 20px rgba(0,212,255,.06);
+    background: var(--input-focus-bg);
+  }
+
+  /* button */
+  .btn-login {
+    width: 100%; margin-top: 8px; padding: 13px 20px;
+    background: linear-gradient(135deg, var(--accent), #4a8df8);
+    color: #0a0b0e; border: 0; border-radius: 10px;
+    font-weight: 700; font-size: 14px; letter-spacing: 1px;
+    cursor: pointer; position: relative; overflow: hidden;
+    transition: all .2s;
+  }
+  .btn-login:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 30px var(--accent-glow);
+  }
+  .btn-login:active:not(:disabled) { transform: translateY(0); }
+  .btn-login:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .btn-login .spinner {
+    display: none; width: 18px; height: 18px;
+    border: 2px solid rgba(10,11,14,.2); border-top-color: #0a0b0e;
+    border-radius: 50%; animation: spin .6s linear infinite;
+    vertical-align: middle; margin-right: 8px;
+  }
+  .btn-login.loading .spinner { display: inline-block; }
+  .btn-login.loading .btn-text { opacity: .7; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* error */
+  .err {
+    background: rgba(255,77,109,.08); border: 1px solid rgba(255,77,109,.25);
+    color: var(--danger); padding: 10px 14px; border-radius: 10px;
+    font-size: 13px; margin-bottom: 16px;
+    display: none; animation: shake .4s;
+  }
+  .err.show { display: block; }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    50% { transform: translateX(6px); }
+    75% { transform: translateX(-4px); }
+  }
+
+  .hint {
+    margin-top: 24px; color: var(--fg-muted); font-size: 11px;
+    font-family: var(--mono); text-align: center; letter-spacing: .5px;
+  }
+
+  /* toast */
+  .toast-stack { position: fixed; top: 24px; right: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--toast-bg); border: 1px solid var(--toast-border);
+    border-left: 3px solid var(--accent); padding: 12px 18px; border-radius: 8px;
+    font-size: 13px; backdrop-filter: blur(20px); color: var(--fg);
+    animation: slide-in .3s cubic-bezier(.16,1,.3,1);
+  }
+  .toast.err { border-left-color: var(--danger); }
+  @keyframes slide-in { from { opacity: 0; transform: translateX(20px); } }
+
+  /* theme toggle */
+  .theme-toggle {
+    position: fixed; top: 20px; right: 20px; z-index: 50;
+    width: 40px; height: 40px; border-radius: 12px;
+    background: var(--toggle-bg); border: 1px solid var(--card-border);
+    backdrop-filter: blur(20px); cursor: pointer;
+    display: grid; place-items: center; font-size: 18px;
+    transition: all .2s; color: var(--fg-dim);
+  }
+  .theme-toggle:hover { background: var(--input-focus-bg); color: var(--fg); transform: scale(1.05); }
+  [data-theme="light"] .icon-moon { display: inline; }
+  [data-theme="light"] .icon-sun { display: none; }
+  [data-theme="dark"] .icon-moon { display: none; }
+  [data-theme="dark"] .icon-sun { display: inline; }
+
+  /* responsive */
+  @media (max-width: 480px) {
+    .card { padding: 28px 22px 24px; border-radius: 16px; }
+    .bg-orb { opacity: .3; }
+  }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="theme-btn" title="切换主题">
+  <span class="icon-sun">☀️</span><span class="icon-moon">🌙</span>
+</button>
+
+<!-- animated bg -->
+<div class="bg-canvas">
+  <div class="bg-orb a"></div>
+  <div class="bg-orb b"></div>
+  <div class="bg-orb c"></div>
+</div>
+<div class="bg-grid"></div>
+
+<div class="wrap">
+  <div class="card">
+    <div class="brand">
+      <div class="logo">C</div>
+      <div>
+        <h1>capcut-draft</h1>
+        <small>数字人 + B-roll + ASR 字幕</small>
+      </div>
+    </div>
+
+    <div class="err" id="err"></div>
+
+    <form id="login-form" autocomplete="off">
+      <div class="field">
+        <label for="username">USERNAME</label>
+        <input type="text" id="username" name="username" autocomplete="username" placeholder="输入用户名" autofocus required>
+      </div>
+      <div class="field">
+        <label for="password">PASSWORD</label>
+        <input type="password" id="password" name="password" autocomplete="new-password" placeholder="输入密码" required>
+      </div>
+      <button class="btn-login" type="submit" id="btn-login">
+        <span class="spinner"></span>
+        <span class="btn-text">登 录</span>
+      </button>
+    </form>
+
+    <div class="hint">内部使用 · 找管理员开账号</div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toasts" aria-live="polite"></div>
+
+<script>
+(function() {
+  if (localStorage.getItem('capcut_token')) {
+    fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(me => {
+      if (me) window.location.href = '/app/';
+    }).catch(() => {});
+    return;
+  }
+
+  const $ = (s) => document.querySelector(s);
+
+  // 主题切换
+  $('#theme-btn').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('capcut_theme', next);
+  });
+
+  const errEl = $('#err');
+  const btn = $('#btn-login');
+  const form = $('#login-form');
+
+  function showErr(msg) { errEl.textContent = msg; errEl.classList.add('show'); }
+  function hideErr() { errEl.classList.remove('show'); }
+
+  function toast(msg, kind) {
+    const t = document.createElement('div');
+    t.className = 'toast' + (kind === 'err' ? ' err' : '');
+    t.textContent = msg;
+    $('#toasts').appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideErr();
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.querySelector('.btn-text').textContent = '登录中…';
+
+    const username = $('#username').value.trim();
+    const password = $('#password').value;
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        showErr(data.detail || `登录失败 (${r.status})`);
+        btn.disabled = false; btn.classList.remove('loading');
+        btn.querySelector('.btn-text').textContent = '登 录';
+        return;
+      }
+      localStorage.setItem('capcut_token', data.access_token);
+      localStorage.setItem('capcut_refresh', data.refresh_token);
+      localStorage.setItem('capcut_user', data.username || data.user?.username || username);
+      toast('登录成功');
+      const dest = '/app/';
+      setTimeout(() => { window.location.href = dest; }, 400);
+    } catch (err) {
+      showErr('网络错误: ' + err.message);
+      btn.disabled = false; btn.classList.remove('loading');
+      btn.querySelector('.btn-text').textContent = '登 录';
+    }
+  });
+})();
+</script>
+</body>
+</html>

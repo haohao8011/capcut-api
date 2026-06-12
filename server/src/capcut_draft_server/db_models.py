@@ -1,14 +1,16 @@
-"""数据库模型（任务系统 + 草稿云端存储）：Client / Asset / Task / TaskLog / Draft / DraftShare / SetupCode。
+"""数据库模型（任务系统 + 草稿云端存储 + 素材上传）：Client / Asset / UploadedAsset / Task / TaskLog / Draft / DraftShare / SetupCode。
 
 User 在 `auth.py`（鉴权强耦合）。`models.py` 保留原来的切点数据类（CutPoint/Segment/Word/Subtitle）。
-这里只放任务系统相关的表 + 客户端鉴权依赖 + 草稿云端存储。
+这里只放任务系统相关的表 + 客户端鉴权依赖 + 草稿云端存储 + 素材上传。
 
 设计要点：
 - 客户端用 opaque token（不是 JWT），存 hash、调 API 带明文
 - 任务状态用 String + 应用层校验（跨 DB 兼容：SQLite / PG / MySQL 都能跑）
-- 主视频 / B-roll 资产只存"路径引用"，文件始终在客户端本地
+- Asset 表：客户端扫盘上报，只存路径引用，文件始终在客户端本地
+- UploadedAsset 表：用户通过 Web 前端直传到服务器，文件存在 uploads/{user_id}/
+- Task 同时支持两种素材来源（main_asset_id → Asset, main_upload_id → UploadedAsset）
 - **草稿 .zip 存在服务端**（data/drafts/{owner_id}/），员工可下载/删除/分享
-  - Quota 默认 5GB/人（环境变量 CAPCUT_DRAFT_QUOTA_MB 可改）
+  - 素材配额默认 3GB/人（CAPCUT_ASSET_QUOTA_MB），草稿配额默认 2GB/人（CAPCUT_DRAFT_QUOTA_MB）
   - 超限上传会被拒绝（不自动删，让用户自己删历史）
   - 草稿永久保留，cleanup_loop 不动草稿表
 """
@@ -120,6 +122,61 @@ class Asset(Base):
             "duration": round(self.duration, 2),
             "mtime": self.mtime.isoformat() if self.mtime else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "source": "client_scan",
+        }
+
+
+# -------- 上传素材（Web 前端直传到服务器） --------
+
+class UploadedAsset(Base):
+    """用户上传的素材：通过 Web 前端直传视频文件到服务器。
+
+    - 文件存储在 uploads/{user_id}/{uuid}_{filename}
+    - review_status 默认 approved（自动通过），admin 事后可审
+    - 与 Asset 表独立，互不干扰
+    """
+    __tablename__ = "uploaded_assets"
+    __table_args__ = (
+        Index("ix_upasset_owner_kind", "owner_id", "kind"),
+        Index("ix_upasset_review", "review_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(255))  # 原始文件名
+    storage_path: Mapped[str] = mapped_column(String(512))  # 相对路径
+    kind: Mapped[str] = mapped_column(String(16))  # "main" / "broll"
+    size: Mapped[int] = mapped_column(BigInteger, default=0)
+    duration: Mapped[float] = mapped_column(Float, default=0.0)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    review_status: Mapped[str] = mapped_column(String(16), default="approved")
+    reviewed_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "owner_id": self.owner_id,
+            "filename": self.filename,
+            "storage_path": self.storage_path,
+            "kind": self.kind,
+            "size": self.size,
+            "duration": round(self.duration, 2),
+            "mime_type": self.mime_type,
+            "review_status": self.review_status,
+            "reviewed_by": self.reviewed_by,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "sha256": self.sha256,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "source": "web_upload",
         }
 
 
@@ -153,6 +210,12 @@ class Task(Base):
     )
     broll_asset_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
 
+    # Web 上传的素材（与上面的客户端扫盘素材并存，向后兼容）
+    main_upload_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("uploaded_assets.id", ondelete="SET NULL"), nullable=True
+    )
+    broll_upload_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+
     options: Mapped[dict] = mapped_column(JSON, default=dict)
 
     output_dir: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
@@ -181,6 +244,8 @@ class Task(Base):
             "message": self.message,
             "main_asset_id": self.main_asset_id,
             "broll_asset_ids": self.broll_asset_ids or [],
+            "main_upload_id": self.main_upload_id,
+            "broll_upload_ids": self.broll_upload_ids or [],
             "output_dir": self.output_dir,
             "result_path": self.result_path,
             "error": self.error,
@@ -409,7 +474,7 @@ class SetupCode(Base):
 
 
 def init_all_tables() -> None:
-    """建所有表（users / clients / assets / tasks / task_logs / setup_codes / drafts / draft_shares）。"""
+    """建所有表（users / clients / assets / uploaded_assets / tasks / task_logs / setup_codes / drafts / draft_shares）。"""
     Base.metadata.create_all(bind=auth_mod.engine)
     _migrate_add_columns()
 
@@ -429,6 +494,25 @@ def _migrate_add_columns() -> None:
             if "quota_mb" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN quota_mb INTEGER"))
                 log.info("[db] migration: added users.quota_mb")
+            # users.asset_quota_mb（素材上传 quota，MB）
+            if "asset_quota_mb" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN asset_quota_mb INTEGER"))
+                log.info("[db] migration: added users.asset_quota_mb")
+
+        # tasks.main_upload_id / tasks.broll_upload_ids
+        if insp.has_table("tasks"):
+            cols = {c["name"] for c in insp.get_columns("tasks")}
+            if "main_upload_id" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN main_upload_id INTEGER "
+                    "REFERENCES uploaded_assets(id) ON DELETE SET NULL"
+                ))
+                log.info("[db] migration: added tasks.main_upload_id")
+            if "broll_upload_ids" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN broll_upload_ids JSON DEFAULT '[]'"
+                ))
+                log.info("[db] migration: added tasks.broll_upload_ids")
 
 
 # -------- FastAPI 依赖：客户端鉴权 --------

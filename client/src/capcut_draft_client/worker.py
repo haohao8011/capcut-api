@@ -185,16 +185,44 @@ class Worker:
             # 2. 解析路径
             main = t.get("main_asset")
             brolls = t.get("broll_assets", []) or []
+            main_upload = t.get("main_upload")
+            broll_uploads = t.get("broll_uploads", []) or []
             opts = t.get("options") or {}
-            if not main or not main.get("path"):
-                err = "task 缺少 main_asset 路径引用（云端零缓存：素材必须在客户端本地）"
+
+            # 主视频：优先本地路径，其次服务器下载
+            if main and main.get("path"):
+                main_path = Path(main["path"])
+            elif main_upload:
+                cache_dir = Path(self.cfg.worker.download_cache_dir)
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                main_path = cache_dir / main_upload.get("filename", f"upload_{main_upload['id']}")
+                if not main_path.exists():
+                    log.info("task #%d: 下载主视频 upload #%d", tid, main_upload["id"])
+                    self.api.progress(tid, 0, f"正在下载主视频 upload #{main_upload['id']}")
+                    if not self.api.download_upload(main_upload["id"], main_path):
+                        err = f"下载主视频失败: upload #{main_upload['id']}"
+                        self.api.fail(tid, error=err, message=err)
+                        self._stats["tasks_failed"] += 1
+                        return
+            else:
+                err = "task 缺少 main_asset 路径引用和 main_upload（素材必须在本地或通过 Web 上传）"
                 log.error("task #%d 失败: %s", tid, err)
                 self.api.fail(tid, error=err, message="缺少主视频")
                 self._stats["tasks_failed"] += 1
                 return
 
-            main_path = Path(main["path"])
+            # B-roll：合并本地路径 + 服务器下载
             broll_paths = [Path(b["path"]) for b in brolls if b.get("path")]
+            for bu in broll_uploads:
+                cache_dir = Path(self.cfg.worker.download_cache_dir)
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                bp = cache_dir / bu.get("filename", f"upload_{bu['id']}")
+                if not bp.exists():
+                    log.info("task #%d: 下载 B-roll upload #%d", tid, bu["id"])
+                    if not self.api.download_upload(bu["id"], bp):
+                        log.warning("B-roll 下载失败，跳过: upload #%d", bu["id"])
+                        continue
+                broll_paths.append(bp)
 
             # 3. 本地文件存在性校验
             if not main_path.exists():

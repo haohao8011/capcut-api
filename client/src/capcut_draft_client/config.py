@@ -53,6 +53,8 @@ class WorkerConfig:
     heartbeat_interval_sec: float = 20.0
     output_dir: Path = Path("./outputs")
     one_at_a_time: bool = True
+    download_cache_dir: Path = Path.home() / ".capcut-draft" / "cache"
+    max_cache_gb: float = 5.0
 
 
 @dataclass

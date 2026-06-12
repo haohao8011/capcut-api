@@ -129,11 +129,14 @@ def build_draft(
     if broll_locals and cut_points:
         for i, cp in enumerate(cut_points):
             clip = broll_locals[i % len(broll_locals)]
+            remaining = main_duration - cp.time
+            if remaining < 0.3:
+                continue
             try:
                 clip_dur = _probe_video_duration(clip)
             except Exception:
                 clip_dur = broll_duration
-            use_dur = max(0.3, min(broll_duration, clip_dur, main_duration - cp.time))
+            use_dur = min(broll_duration, clip_dur, remaining)
             if use_dur < 0.3:
                 continue
             broll_mat = VideoMaterial(clip)

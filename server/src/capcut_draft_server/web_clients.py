@@ -61,9 +61,12 @@ def list_clients(
     user: Annotated[auth_mod.User, Depends(auth_mod.get_current_user)],
     db: Annotated[auth_mod.Session, Depends(auth_mod.get_db)],
 ) -> dict:
-    """列出所有客户端（可按 owner_id 过滤）。"""
+    """列出所有客户端（可按 owner_id 过滤）。非 admin 强制只看自己的。"""
     q = models.select(models.Client)
-    if owner_id is not None:
+    # 非 admin 强制 owner 隔离
+    if not user.is_admin:
+        q = q.where(models.Client.owner_id == user.id)
+    elif owner_id is not None:
         q = q.where(models.Client.owner_id == owner_id)
     if only_online:
         q = q.where(models.Client.is_online == True)  # noqa: E712

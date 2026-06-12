@@ -84,6 +84,32 @@ class ServerAPI:
     def batch_upsert_assets(self, items: list[dict]) -> dict:
         return self._req("POST", "/api/assets/batch", json={"items": items})
 
+    # -------- 素材下载（Web 上传的素材） --------
+
+    def download_upload(self, upload_id: int, dest: Path, chunk_size: int = 1024 * 1024) -> bool:
+        """GET /api/uploads/{id}/download → 流式写入 dest。成功返回 True。"""
+        url = f"{self.base_url}/api/uploads/{upload_id}/download"
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with self._client.stream(
+                "GET", url, headers=self._headers(),
+                timeout=httpx.Timeout(connect=15.0, read=None, write=None, pool=10.0),
+            ) as r:
+                if r.status_code != 200:
+                    log.error("download_upload HTTP %d for upload #%d", r.status_code, upload_id)
+                    return False
+                with dest.open("wb") as f:
+                    for chunk in r.iter_bytes(chunk_size):
+                        f.write(chunk)
+            log.info("downloaded upload #%d → %s (%d bytes)", upload_id, dest, dest.stat().st_size)
+            return True
+        except httpx.RequestError as e:
+            log.error("download_upload 网络错误 upload #%d: %s", upload_id, e)
+            if dest.exists():
+                dest.unlink()
+            return False
+
     # -------- 健康检查 --------
 
     def ping(self) -> bool:

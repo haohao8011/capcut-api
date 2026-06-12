@@ -32,11 +32,11 @@ chown -R $APP_USER:$APP_USER $APP_DIR
 echo "==> 4. venv + deps"
 sudo -u $APP_USER python3 -m venv $APP_DIR/.venv
 sudo -u $APP_USER $APP_DIR/.venv/bin/pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple
-sudo -u $APP_USER $APP_DIR/.venv/bin/pip install -r $APP_DIR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-sudo -u $APP_USER $APP_DIR/.venv/bin/pip install gunicorn -i https://pypi.tuna.tsinghua.edu.cn/simple
+# monorepo 拆 3 个子包（common + server），gunicorn 已在 server/pyproject.toml deps 里
+sudo -u $APP_USER $APP_DIR/.venv/bin/pip install -e $APP_DIR/common -e $APP_DIR/server -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 echo "==> 5. 初始化数据目录"
-mkdir -p /var/lib/capcut-draft/{uploads/main,uploads/broll,outputs,logs}
+mkdir -p /var/lib/capcut-draft/{drafts,logs}
 chown -R $APP_USER:$APP_USER /var/lib/capcut-draft
 
 echo "==> 6. 写 .env（如果还没有）"
@@ -45,13 +45,10 @@ if [ ! -f $APP_DIR/.env ]; then
 # 拷到 /opt/capcut-draft/.env
 CAPCUT_JWT_SECRET=$(openssl rand -hex 32)
 CAPCUT_DB_URL=sqlite:////var/lib/capcut-draft/capcut.db
-CAPCUT_UPLOAD_DIR=/var/lib/capcut-draft/uploads
-CAPCUT_OUTPUT_DIR=/var/lib/capcut-draft/outputs
+CAPCUT_DRAFTS_DIR=/var/lib/capcut-draft/drafts
 CAPCUT_LOG_DIR=/var/lib/capcut-draft/logs
 # 清理参数
 CAPCUT_CLEANUP_INTERVAL=3600
-CAPCUT_CLEANUP_UPLOAD_AGE=604800
-CAPCUT_CLEANUP_ZIP_AGE=604800
 CAPCUT_CLEANUP_LOG_AGE=2592000
 CAPCUT_CLEANUP_OFFLINE_DAYS=30
 EOF
@@ -79,7 +76,7 @@ ExecStart=$APP_DIR/.venv/bin/gunicorn \\
     --access-logfile /var/lib/capcut-draft/logs/access.log \\
     --error-logfile /var/lib/capcut-draft/logs/error.log \\
     --capture-output \\
-    capcut_draft.web:app
+    capcut_draft_server.web:app
 Restart=always
 RestartSec=5
 
@@ -97,7 +94,7 @@ cat > /etc/nginx/sites-available/$SERVICE_NAME <<EOF
 server {
     listen 80;
     server_name $DOMAIN;
-    client_max_body_size 2048m;   # 仅供旧的"上传到云端"路径，新 C/S 模式用不到
+    client_max_body_size 3072m;   # /api/drafts/upload 接收最大 2GB .zip + multipart overhead
 
     location / {
         proxy_pass http://127.0.0.1:8000;

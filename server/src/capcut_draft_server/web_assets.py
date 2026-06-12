@@ -86,28 +86,49 @@ def batch_upsert(
 def list_assets(
     kind: Optional[str] = None,
     client_id: Optional[int] = None,
+    source: Optional[str] = None,
     *,
     user: Annotated[auth_mod.User, Depends(auth_mod.get_current_user)],
     db: Annotated[auth_mod.Session, Depends(auth_mod.get_db)],
 ) -> dict:
-    """列出当前用户可用的素材（自己的 + 公共池 client 上报的）。"""
-    from sqlalchemy import or_
-    q = models.select(models.Asset)
-    if not user.is_admin:
-        # 普通用户只看：自己 owner 的 + 公共池 client 上报的
-        from sqlalchemy import select as _sel
-        public_client_ids = _sel(models.Client.id).where(models.Client.owner_id.is_(None))
-        q = q.where(or_(
-            models.Asset.owner_id == user.id,
-            models.Asset.client_id.in_(public_client_ids),
-        ))
-    if kind:
-        q = q.where(models.Asset.kind == kind)
-    if client_id is not None:
-        q = q.where(models.Asset.client_id == client_id)
-    q = q.order_by(models.Asset.id.desc())
-    items = db.scalars(q).all()
-    return {"assets": [a.to_dict() for a in items]}
+    """列出当前用户可用的素材（客户端扫盘 + Web 上传合并）。
+
+    每条 asset 带 source 字段："client_scan" 或 "web_upload"。
+    """
+    from sqlalchemy import or_, select as _sel
+
+    result = []
+
+    # 1. 客户端扫盘素材（Asset 表）
+    if not source or source == "client_scan":
+        q = models.select(models.Asset)
+        if not user.is_admin:
+            public_client_ids = _sel(models.Client.id).where(models.Client.owner_id.is_(None))
+            q = q.where(or_(
+                models.Asset.owner_id == user.id,
+                models.Asset.client_id.in_(public_client_ids),
+            ))
+        if kind:
+            q = q.where(models.Asset.kind == kind)
+        if client_id is not None:
+            q = q.where(models.Asset.client_id == client_id)
+        q = q.order_by(models.Asset.id.desc())
+        for a in db.scalars(q).all():
+            result.append(a.to_dict())
+
+    # 2. Web 上传素材（UploadedAsset 表，只返回 approved + 自己的）
+    if not source or source == "web_upload":
+        uq = _sel(models.UploadedAsset).where(
+            models.UploadedAsset.owner_id == user.id,
+            models.UploadedAsset.review_status == "approved",
+        )
+        if kind:
+            uq = uq.where(models.UploadedAsset.kind == kind)
+        uq = uq.order_by(models.UploadedAsset.id.desc())
+        for ua in db.scalars(uq).all():
+            result.append(ua.to_dict())
+
+    return {"assets": result}
 
 
 @router.get("/{aid}", dependencies=[Depends(auth_mod.get_current_user)])

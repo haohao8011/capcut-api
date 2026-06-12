@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理后台登录 · capcut-draft</title>
+<script>
+(function(){
+  var t=localStorage.getItem('capcut_theme');
+  if(!t)t=window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark';
+  document.documentElement.setAttribute('data-theme',t);
+})();
+</script>
+<style>
+  :root {
+    --bg-0: #0a0b0e; --bg-1: #11131a; --bg-2: #181b24; --bg-3: #21242f;
+    --line: #2a2e3a; --line-strong: #3a3f4f;
+    --fg-0: #e8eaf0; --fg-1: #aab0c0; --fg-2: #6c7385;
+    --accent: #00d4ff; --accent-2: #ff6a00; --danger: #ff4d6d;
+    --bear-face: #f5d0a9; --bear-ear: #e8b88a; --bear-ear-inner: #f2a5b0;
+    --bear-eye: #3a2a1a; --bear-blush: rgba(255,120,130,.45);
+    --bear-nose: #6b4226; --bear-mouth: #6b4226;
+    --bear-hand: #f5d0a9; --bear-paw: #e8b88a;
+    --card-bg: rgba(17,19,26,.85); --card-border: rgba(255,255,255,.08);
+    --input-bg: rgba(255,255,255,.06); --input-border: rgba(255,255,255,.12);
+    --r-sm: 4px; --r-md: 8px; --r-lg: 16px;
+    --mono: ui-monospace, "JetBrains Mono", monospace;
+    --sans: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", sans-serif;
+  }
+  [data-theme="light"] {
+    --bg-0: #f0f2f5; --bg-1: #ffffff; --bg-2: #f8f9fb; --bg-3: #e5e7eb;
+    --line: #e0e2e8; --line-strong: #c9cdd6;
+    --fg-0: #1a1d26; --fg-1: #4b5563; --fg-2: #6b7280;
+    --accent: #0891b2; --accent-2: #ea580c; --danger: #dc2626;
+    --card-bg: rgba(255,255,255,.9); --card-border: rgba(0,0,0,.08);
+    --input-bg: rgba(0,0,0,.03); --input-border: rgba(0,0,0,.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: var(--sans); min-height: 100vh; }
+  body {
+    background: var(--bg-0);
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(0,212,255,.06) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(255,106,0,.05) 0%, transparent 50%);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fg-0);
+  }
+
+  .login-wrapper {
+    display: flex; align-items: center; gap: 48px;
+    max-width: 820px; width: 90%; padding: 24px 0;
+  }
+
+  /* ===== SVG Character ===== */
+  .character-area {
+    flex-shrink: 0; width: 280px; height: 320px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .character-svg { width: 240px; height: 280px; overflow: visible; }
+
+  /* Breathing */
+  @keyframes breathe {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .bear-body { animation: breathe 3s ease-in-out infinite; }
+
+  /* Hands */
+  .bear-hand {
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1);
+    transform-origin: center bottom;
+  }
+  .hands-up .bear-hand-left { transform: translate(20px, -92px) rotate(15deg); }
+  .hands-up .bear-hand-right { transform: translate(-20px, -92px) rotate(-15deg); }
+
+  /* Peeking - hands slightly apart and lower (偷看) */
+  .peeking .bear-hand-left { transform: translate(32px, -82px) rotate(25deg); }
+  .peeking .bear-hand-right { transform: translate(-32px, -82px) rotate(-25deg); }
+
+  /* Blush */
+  .bear-blush { opacity: 0; transition: opacity .3s; }
+  .shy .bear-blush { opacity: 1; }
+
+  /* Pupils */
+  .bear-pupil { transition: transform .1s ease-out; }
+
+  /* ===== Login Card ===== */
+  .login-card {
+    flex: 1; min-width: 300px;
+    background: var(--card-bg);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--card-border);
+    border-radius: var(--r-lg); padding: 36px 32px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.3);
+  }
+  .login-card h1 { font-size: 22px; margin: 0 0 4px; font-weight: 700; }
+  .login-card .subtitle { color: var(--fg-2); font-family: var(--mono); font-size: 11px; margin-bottom: 28px; letter-spacing: 1px; }
+
+  .field { margin-bottom: 18px; }
+  .field label { display: block; font-size: 12px; color: var(--fg-1); margin-bottom: 6px; font-family: var(--mono); letter-spacing: .5px; }
+  .field input {
+    width: 100%; padding: 11px 14px; background: var(--input-bg);
+    border: 1px solid var(--input-border); border-radius: var(--r-md);
+    color: var(--fg-0); font-size: 14px; font-family: var(--sans);
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .field input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,.15);
+  }
+  .field input::placeholder { color: var(--fg-2); }
+
+  .login-btn {
+    width: 100%; padding: 12px; margin-top: 8px;
+    background: linear-gradient(135deg, var(--accent-2), var(--danger));
+    color: #fff; border: 0; border-radius: var(--r-md);
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: transform .15s, box-shadow .15s;
+    box-shadow: 0 4px 16px rgba(255,106,0,.3);
+  }
+  .login-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,106,0,.4); }
+  .login-btn:active:not(:disabled) { transform: translateY(0); }
+  .login-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+  .error-msg { color: var(--danger); font-size: 12px; margin-top: 10px; min-height: 18px; }
+  .footer-links { margin-top: 20px; text-align: center; font-size: 12px; color: var(--fg-2); }
+  .footer-links a { color: var(--accent); }
+
+  /* Theme toggle */
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--bg-3); border: 1px solid var(--line);
+    cursor: pointer; display: grid; place-items: center; font-size: 16px;
+    transition: all .2s; color: var(--fg-2); z-index: 10;
+  }
+  .theme-toggle:hover { color: var(--fg-0); background: var(--bg-2); }
+  [data-theme="light"] .icon-moon { display: inline; } [data-theme="light"] .icon-sun { display: none; }
+  [data-theme="dark"] .icon-moon { display: none; } [data-theme="dark"] .icon-sun { display: inline; }
+
+  @media (max-width: 700px) {
+    .login-wrapper { flex-direction: column; gap: 24px; }
+    .character-area { width: 200px; height: 240px; }
+    .character-svg { width: 180px; height: 210px; }
+    .login-card { min-width: unset; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" id="theme-btn" title="切换主题">
+  <span class="icon-sun">☀️</span><span class="icon-moon">🌙</span>
+</button>
+
+<div class="login-wrapper">
+  <!-- SVG Character -->
+  <div class="character-area" id="char-area">
+    <svg class="character-svg" id="bear-svg" viewBox="0 0 240 280" xmlns="http://www.w3.org/2000/svg">
+      <g class="bear-body">
+        <!-- Ears -->
+        <ellipse cx="62" cy="52" rx="28" ry="26" fill="var(--bear-ear)"/>
+        <ellipse cx="62" cy="52" rx="18" ry="16" fill="var(--bear-ear-inner)"/>
+        <ellipse cx="178" cy="52" rx="28" ry="26" fill="var(--bear-ear)"/>
+        <ellipse cx="178" cy="52" rx="18" ry="16" fill="var(--bear-ear-inner)"/>
+
+        <!-- Head -->
+        <ellipse cx="120" cy="110" rx="76" ry="72" fill="var(--bear-face)"/>
+
+        <!-- Eyes -->
+        <g class="bear-eyes">
+          <!-- Left eye white -->
+          <ellipse cx="92" cy="102" rx="16" ry="18" fill="#fff"/>
+          <!-- Left pupil -->
+          <circle class="bear-pupil" id="pupil-left" cx="92" cy="104" r="8" fill="var(--bear-eye)"/>
+          <!-- Left eye shine -->
+          <circle cx="96" cy="98" r="3" fill="#fff" opacity=".8"/>
+
+          <!-- Right eye white -->
+          <ellipse cx="148" cy="102" rx="16" ry="18" fill="#fff"/>
+          <!-- Right pupil -->
+          <circle class="bear-pupil" id="pupil-right" cx="148" cy="104" r="8" fill="var(--bear-eye)"/>
+          <!-- Right eye shine -->
+          <circle cx="152" cy="98" r="3" fill="#fff" opacity=".8"/>
+        </g>
+
+        <!-- Blush -->
+        <ellipse class="bear-blush" cx="72" cy="126" rx="14" ry="8" fill="var(--bear-blush)"/>
+        <ellipse class="bear-blush" cx="168" cy="126" rx="14" ry="8" fill="var(--bear-blush)"/>
+
+        <!-- Nose -->
+        <ellipse cx="120" cy="124" rx="8" ry="6" fill="var(--bear-nose)"/>
+
+        <!-- Mouth -->
+        <path d="M112 132 Q120 142 128 132" stroke="var(--bear-mouth)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+        <!-- Body (small, just a hint) -->
+        <ellipse cx="120" cy="200" rx="52" ry="40" fill="var(--bear-face)"/>
+
+        <!-- Hands -->
+        <g class="bear-hand bear-hand-left">
+          <ellipse cx="76" cy="210" rx="20" ry="16" fill="var(--bear-hand)" transform="rotate(-15 76 210)"/>
+          <ellipse cx="68" cy="204" rx="5" ry="4" fill="var(--bear-paw)"/>
+          <ellipse cx="76" cy="200" rx="5" ry="4" fill="var(--bear-paw)"/>
+          <ellipse cx="84" cy="204" rx="5" ry="4" fill="var(--bear-paw)"/>
+        </g>
+        <g class="bear-hand bear-hand-right">
+          <ellipse cx="164" cy="210" rx="20" ry="16" fill="var(--bear-hand)" transform="rotate(15 164 210)"/>
+          <ellipse cx="156" cy="204" rx="5" ry="4" fill="var(--bear-paw)"/>
+          <ellipse cx="164" cy="200" rx="5" ry="4" fill="var(--bear-paw)"/>
+          <ellipse cx="172" cy="204" rx="5" ry="4" fill="var(--bear-paw)"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Login Form -->
+  <div class="login-card">
+    <h1>🔐 管理后台</h1>
+    <div class="subtitle">capcut-draft · admin console</div>
+    <form id="login-form" autocomplete="off">
+      <div class="field">
+        <label for="username">用户名</label>
+        <input type="text" id="username" name="username" placeholder="请输入管理员账号" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input type="password" id="password" name="password" placeholder="请输入密码" autocomplete="new-password" required>
+      </div>
+      <button type="submit" class="login-btn" id="login-btn">登 录</button>
+      <div class="error-msg" id="error-msg"></div>
+    </form>
+    <div class="footer-links">
+      <a href="/docs" target="_blank">API 文档</a>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// Theme toggle
+document.getElementById('theme-btn')?.addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('capcut_theme', next);
+});
+
+// If already logged in, check admin status
+if (localStorage.getItem('capcut_token')) {
+  fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(me => {
+    if (me && me.is_admin) window.location.href = '/admin/';
+    else if (me) {
+      // Non-admin: show notice, clear token
+      document.getElementById('error-msg').textContent = '此入口仅限管理员访问';
+      localStorage.removeItem('capcut_token');
+      localStorage.removeItem('capcut_refresh');
+      localStorage.removeItem('capcut_user');
+    }
+  }).catch(() => {});
+}
+
+// ===== Bear Interactions =====
+const bearSvg = document.getElementById('bear-svg');
+const charArea = document.getElementById('char-area');
+const pupilL = document.getElementById('pupil-left');
+const pupilR = document.getElementById('pupil-right');
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('password');
+
+let isPasswordFocused = false;
+let isPasswordHover = false;
+
+function setBearState(state) {
+  bearSvg.classList.remove('hands-up', 'peeking', 'shy');
+  if (state) bearSvg.classList.add(state);
+}
+
+// Pupil tracking
+function movePupils(mx, my) {
+  const rect = bearSvg.getBoundingClientRect();
+  const svgW = rect.width, svgH = rect.height;
+  // Mouse position relative to SVG center
+  const cx = rect.left + svgW / 2;
+  const cy = rect.top + svgH * 0.37; // eye area
+  const dx = (mx - cx) / svgW;
+  const dy = (my - cy) / svgH;
+  const maxMove = 5;
+  const px = Math.max(-maxMove, Math.min(maxMove, dx * 20));
+  const py = Math.max(-maxMove, Math.min(maxMove, dy * 20));
+  pupilL.setAttribute('transform', `translate(${px}, ${py})`);
+  pupilR.setAttribute('transform', `translate(${px}, ${py})`);
+}
+
+// Mouse move on page → pupil tracking + shy detection
+document.addEventListener('mousemove', (e) => {
+  movePupils(e.clientX, e.clientY);
+
+  // Shy detection: mouse close to character
+  const rect = charArea.getBoundingClientRect();
+  const charCx = rect.left + rect.width / 2;
+  const charCy = rect.top + rect.height / 2;
+  const dist = Math.hypot(e.clientX - charCx, e.clientY - charCy);
+
+  if (dist < 120 && !isPasswordFocused) {
+    bearSvg.classList.add('shy');
+  } else if (!isPasswordFocused) {
+    bearSvg.classList.remove('shy');
+  }
+});
+
+// Password focus → hands up (cover eyes)
+passwordInput.addEventListener('focus', () => {
+  isPasswordFocused = true;
+  if (isPasswordHover) {
+    setBearState('peeking');
+  } else {
+    setBearState('hands-up');
+  }
+});
+passwordInput.addEventListener('blur', () => {
+  isPasswordFocused = false;
+  isPasswordHover = false;
+  setBearState(null);
+});
+
+// Mouse enter password → peek
+passwordInput.addEventListener('mouseenter', () => {
+  isPasswordHover = true;
+  if (isPasswordFocused) {
+    setBearState('peeking');
+  }
+});
+passwordInput.addEventListener('mouseleave', () => {
+  isPasswordHover = false;
+  if (isPasswordFocused) {
+    setBearState('hands-up');
+  }
+});
+
+// Username focus → pupils follow input cursor (wider range)
+usernameInput.addEventListener('focus', () => {
+  // Pupils already track mouse, just remove shy
+  bearSvg.classList.remove('shy');
+});
+
+// ===== Login Form =====
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('login-btn');
+  const errEl = document.getElementById('error-msg');
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  if (!username || !password) { errEl.textContent = '请输入用户名和密码'; return; }
+  btn.disabled = true; btn.textContent = '登录中…'; errEl.textContent = '';
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password}),
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.detail || '登录失败'; return; }
+    localStorage.setItem('capcut_token', data.access_token);
+    localStorage.setItem('capcut_refresh', data.refresh_token || '');
+    localStorage.setItem('capcut_user', username);
+    // Only admin allowed
+    if (data.is_admin) {
+      window.location.href = '/admin/';
+    } else {
+      errEl.textContent = '此入口仅限管理员访问';
+      localStorage.removeItem('capcut_token');
+      localStorage.removeItem('capcut_refresh');
+      localStorage.removeItem('capcut_user');
+    }
+  } catch (err) {
+    errEl.textContent = '网络错误，请重试';
+  } finally {
+    btn.disabled = false; btn.textContent = '登 录';
+  }
+});
+</script>
+</body>
+</html>

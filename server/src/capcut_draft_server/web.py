@@ -12,85 +12,46 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
 import threading
 import time
-import traceback
 import uuid
-import zipfile
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 from fastapi import (
-    BackgroundTasks,
     Depends,
     FastAPI,
-    File,
     HTTPException,
     Request,
-    UploadFile,
 )
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import auth as auth_mod
 from . import db_models
-from . import web_assets, web_clients, web_drafts, web_tasks
-from capcut_draft_core.cli import _process_one  # 共享核心：ASR + 草稿生成
+from . import web_assets, web_clients, web_drafts, web_tasks, web_uploads
 
 log = logging.getLogger(__name__)
 
 # 路径常量
 ROOT = Path(__file__).resolve().parent.parent.parent
-UPLOAD_DIR = ROOT / "uploads"
-MAIN_DIR = UPLOAD_DIR / "main"
-BROLL_DIR = UPLOAD_DIR / "broll"
-OUTPUT_DIR = ROOT / "outputs"
-STATIC_DIR = Path(__file__).resolve().parent / "static"
+STATIC_DIR = Path(__file__).resolve().parent / "static"          # 内部静态（404、favicon）
+ADMIN_DIR = ROOT.parent / "admin"                                 # 管理后台 UI
+FRONTEND_DIR = ROOT.parent / "frontend"                           # 用户工作台 UI
 # 优先用 monorepo 顶层 config/（monorepo 重构后的位置），fallback 到 server/config/
 _TOP_CONFIG = ROOT.parent / "config" if (ROOT.parent / "config").exists() else None
 CONFIG_DIR = _TOP_CONFIG if _TOP_CONFIG else (ROOT / "config")
 BUILTIN_WF_FILE = CONFIG_DIR / "workflows.builtin.json"
 USER_WF_FILE = CONFIG_DIR / "workflows.user.json"
 
-for d in (MAIN_DIR, BROLL_DIR, OUTPUT_DIR, CONFIG_DIR):
-    d.mkdir(parents=True, exist_ok=True)
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 # 用户工作流文件不存在时建空数组
 if not USER_WF_FILE.exists():
     USER_WF_FILE.write_text("[]\n", encoding="utf-8")
 
 
 # -------- 数据模型 --------
-
-JobStatus = Literal["queued", "running", "success", "failed"]
-
-
-@dataclass
-class JobInfo:
-    id: str
-    name: str
-    main_file: str
-    broll_files: list[str]
-    options: dict
-    status: JobStatus = "queued"
-    created_at: float = field(default_factory=time.time)
-    started_at: float | None = None
-    finished_at: float | None = None
-    error: str | None = None
-    draft_path: str | None = None
-    progress_log: list[str] = field(default_factory=list)
-
-
-# 内存里的"任务库"（重启会清空；正式用可换 SQLite/Redis）
-_JOBS: dict[str, JobInfo] = {}
-_JOBS_LOCK = threading.Lock()
-
-# 文件 id → 文件路径 映射（uploads/main 或 uploads/broll）
-_MAIN_FILES: dict[str, str] = {}
-_BROLL_FILES: dict[str, str] = {}
-_FILES_LOCK = threading.Lock()
 
 
 # -------- FastAPI app --------
@@ -102,11 +63,23 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(StarletteHTTPException)
+async def custom_404_handler(request: Request, exc: StarletteHTTPException) -> HTMLResponse:
+    """自定义 404 页面：现代深色风格。"""
+    if exc.status_code == 404:
+        # API 路径仍然返回 JSON
+        if str(request.url.path).startswith("/api/"):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        html = (STATIC_DIR / "404.html").read_text(encoding="utf-8")
+        return HTMLResponse(content=html, status_code=404)
+    # 其他 HTTP 错误保持默认
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
 @app.exception_handler(Exception)
 async def _unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
     """把未处理的异常以 JSON 返回给前端，方便调试。"""
-    log.error("Unhandled error on %s %s: %s", request.method, request.url, exc)
-    log.error(traceback.format_exc())
+    log.exception("Unhandled error on %s %s: %s", request.method, request.url, exc)
     return JSONResponse(
         status_code=500,
         content={"detail": f"{type(exc).__name__}: {exc}"},
@@ -120,54 +93,12 @@ def _setup_logging() -> None:
     )
 
 
-# -------- 云端定期清理（用户需求：草稿/数字人/素材全在本地，云端不缓存） --------
+# -------- 云端定期清理（草稿是用户资产不删；只清 task_logs + 离线 client） --------
 
 # 默认阈值（秒），可通过环境变量覆盖
 CLEANUP_INTERVAL_SEC = int(os.environ.get("CAPCUT_CLEANUP_INTERVAL", "3600"))   # 1h
-CLEANUP_UPLOAD_MAX_AGE = int(os.environ.get("CAPCUT_CLEANUP_UPLOAD_AGE", "604800"))  # 7d
-CLEANUP_ZIP_MAX_AGE = int(os.environ.get("CAPCUT_CLEANUP_ZIP_AGE", "604800"))  # 7d
 CLEANUP_LOG_MAX_AGE = int(os.environ.get("CAPCUT_CLEANUP_LOG_AGE", "2592000"))  # 30d
 CLEANUP_OFFLINE_CLIENT_DAYS = int(os.environ.get("CAPCUT_CLEANUP_OFFLINE_DAYS", "30"))  # 30d 未心跳
-
-
-def _cleanup_uploads_once() -> dict:
-    """清 uploads/main + uploads/broll 里超过阈值的旧文件（**这些是旧的"上传到云端处理"模式
-    留下的；C/S 模式不经过这里**）。"""
-    now = time.time()
-    removed = 0
-    bytes_freed = 0
-    for d in (MAIN_DIR, BROLL_DIR):
-        if not d.exists():
-            continue
-        for p in d.iterdir():
-            try:
-                if not p.is_file():
-                    continue
-                age = now - p.stat().st_mtime
-                if age > CLEANUP_UPLOAD_MAX_AGE:
-                    size = p.stat().st_size
-                    p.unlink()
-                    removed += 1
-                    bytes_freed += size
-                    log.info("[cleanup] 旧上传文件: %s (%.1f MB, %d 天前)",
-                             p.name, size / 1024 / 1024, int(age / 86400))
-            except OSError as e:
-                log.debug("[cleanup] 跳过 %s: %s", p, e)
-    # 清 outputs/*.zip 里超过阈值的（draft 文件夹本身如果用户没下载也会留下，按 7d 一起清）
-    if OUTPUT_DIR.exists():
-        for p in OUTPUT_DIR.glob("*.zip"):
-            try:
-                age = now - p.stat().st_mtime
-                if age > CLEANUP_ZIP_MAX_AGE:
-                    size = p.stat().st_size
-                    p.unlink()
-                    removed += 1
-                    bytes_freed += size
-                    log.info("[cleanup] 旧 zip: %s (%.1f MB, %d 天前)",
-                             p.name, size / 1024 / 1024, int(age / 86400))
-            except OSError:
-                pass
-    return {"removed": removed, "bytes_freed": bytes_freed}
 
 
 def _cleanup_db_once(db) -> dict:
@@ -199,13 +130,11 @@ def _cleanup_loop() -> None:
     while True:
         try:
             time.sleep(CLEANUP_INTERVAL_SEC)
-            r1 = _cleanup_uploads_once()
             from . import auth as _a
             with _a.SessionLocal() as db:
                 r2 = _cleanup_db_once(db)
-            if r1.get("removed") or r2.get("logs_deleted") or r2.get("clients_marked_offline"):
-                log.info("[cleanup] 本轮: 文件 %d 项 / 日志 %d 条 / client %d 个",
-                         r1.get("removed", 0),
+            if r2.get("logs_deleted") or r2.get("clients_marked_offline"):
+                log.info("[cleanup] 本轮: 日志 %d 条 / client %d 个",
                          r2.get("logs_deleted", 0),
                          r2.get("clients_marked_offline", 0))
         except Exception as e:
@@ -222,36 +151,49 @@ def _startup() -> None:
     # 起后台清理线程（守护线程，主进程退出它自动退）
     t = threading.Thread(target=_cleanup_loop, name="cleanup", daemon=True)
     t.start()
-    # 启动后跑一次
-    try:
-        r = _cleanup_uploads_once()
-        log.info("[cleanup] 启动时清扫: %d 项", r.get("removed", 0))
-    except Exception as e:
-        log.warning("[cleanup] 启动时清扫失败（忽略）: %s", e)
 
 
-# -------- 静态文件 / 首页 --------
+# -------- 静态文件挂载 --------
 
+# 内部静态（404.html、favicon.jpg）
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# 管理后台 UI（独立目录，前后端分离）
+app.mount("/admin", StaticFiles(directory=str(ADMIN_DIR), html=True), name="admin")
+# 用户工作台 UI（独立目录，前后端分离）
+app.mount("/app", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 # -------- C/S 路由（拆分文件） --------
 app.include_router(web_clients.router)
 app.include_router(web_assets.router)
 app.include_router(web_tasks.router)
 app.include_router(web_drafts.router)
+app.include_router(web_uploads.router)
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def index() -> HTMLResponse:
-    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    return HTMLResponse(html)
+# -------- 重定向路由（保持向后兼容） --------
+
+@app.get("/", include_in_schema=False)
+def root_redirect():
+    """根路径 → 用户工作台。"""
+    return RedirectResponse(url="/app/")
 
 
-@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
-def login_page() -> HTMLResponse:
-    """独立登录页：未登录时跳到这里。"""
-    html = (STATIC_DIR / "login.html").read_text(encoding="utf-8")
-    return HTMLResponse(html)
+@app.get("/console", include_in_schema=False)
+def console_redirect():
+    """管理后台 → /admin/。"""
+    return RedirectResponse(url="/admin/")
+
+
+@app.get("/console/login", include_in_schema=False)
+def console_login_redirect():
+    """管理后台登录 → /admin/login.html。"""
+    return RedirectResponse(url="/admin/login.html")
+
+
+@app.get("/login", include_in_schema=False)
+def login_redirect():
+    """用户登录 → /app/login.html。"""
+    return RedirectResponse(url="/app/login.html")
 
 
 # -------- 工作流管理 --------
@@ -519,269 +461,42 @@ def admin_reset_password(uid: int, req: ResetPwdReq, db=Depends(auth_mod.get_db)
     return {"ok": True, "uid": uid}
 
 
-# 用 PIL 生成一张 16x16 青色 "C" 图标。装了 funasr / pyJianYingDraft 基本会顺带把
-# Pillow 拉进来；如果实在没装，fallback 到 1x1 透明 PNG。
-def _make_favicon_png() -> bytes:
-    try:
-        from PIL import Image, ImageDraw
-    except ImportError:
-        # 1x1 透明 PNG（最少 67 字节）
-        import base64 as _b64
-        return _b64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4"
-            "2mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
-        )
-    img = Image.new("RGBA", (16, 16), (10, 11, 14, 255))  # --bg-0
-    d = ImageDraw.Draw(img)
-    # 画一个青色环 + 中心镂空，做成 "C" 形
-    cyan = (0, 212, 255, 255)
-    # 圆环
-    d.ellipse((1, 1, 14, 14), outline=cyan, width=3)
-    # 抹掉右侧一小段，做成 C
-    d.rectangle((9, 5, 15, 11), fill=(10, 11, 14, 255))
-    import io
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    return buf.getvalue()
+# -------- favicon（用户自定义头像） --------
 
+_FAVICON_PATH = STATIC_DIR / "favicon.jpg"
+_FAVICON_BYTES: bytes | None = None
+_FAVICON_MIME = "image/jpeg"
 
-_FAVICON_PNG = _make_favicon_png()
+def _load_favicon() -> bytes:
+    """读取 favicon 文件，缓存到内存。"""
+    global _FAVICON_BYTES
+    if _FAVICON_BYTES is None:
+        if _FAVICON_PATH.exists():
+            _FAVICON_BYTES = _FAVICON_PATH.read_bytes()
+        else:
+            # fallback: 1x1 透明 PNG
+            import base64 as _b64
+            _FAVICON_BYTES = _b64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4"
+                "2mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
+            )
+            global _FAVICON_MIME
+            _FAVICON_MIME = "image/png"
+    return _FAVICON_BYTES
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon() -> Response:
-    """给浏览器标签一个青色 C 图标，免得日志里 404。"""
-    return Response(content=_FAVICON_PNG, media_type="image/png")
-
-
-# -------- 上传接口 --------
-
-_ALLOWED_VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
-
-
-def _save_upload(file: UploadFile, dest_dir: Path) -> tuple[str, str]:
-    """保存上传文件到 dest_dir，返回 (file_id, 绝对路径)。"""
-    suffix = Path(file.filename or "").suffix.lower() or ".mp4"
-    if suffix not in _ALLOWED_VIDEO_EXTS:
-        raise HTTPException(400, f"不支持的视频格式: {suffix}")
-    file_id = f"{uuid.uuid4().hex}{suffix}"
-    dest = dest_dir / file_id
-    with dest.open("wb") as f:
-        shutil.copyfileobj(file.file, f)
-    return file_id, str(dest)
-
-
-@app.post("/api/upload-main",
-             dependencies=[Depends(auth_mod.get_current_user)])
-async def upload_main(file: UploadFile = File(...)) -> dict:
-    """上传主视频（数字人/口播），返回 file_id，后续用这个 id 启动任务。"""
-    file_id, path = _save_upload(file, MAIN_DIR)
-    with _FILES_LOCK:
-        _MAIN_FILES[file_id] = path
-    return {"file_id": file_id, "filename": file.filename, "path": path}
-
-
-@app.post("/api/upload-broll",
-             dependencies=[Depends(auth_mod.get_current_user)])
-async def upload_broll(files: list[UploadFile] = File(...)) -> dict:
-    """批量上传 B-roll 素材，返回 file_id 列表。"""
-    ids: list[str] = []
-    paths: list[str] = []
-    for f in files:
-        file_id, path = _save_upload(f, BROLL_DIR)
-        ids.append(file_id)
-        paths.append(path)
-    with _FILES_LOCK:
-        for fid, p in zip(ids, paths):
-            _BROLL_FILES[fid] = p
-    return {"file_ids": ids, "count": len(ids)}
-
-
-# -------- 任务接口 --------
-
-
-class JobOptions(BaseModel):
-    pause_threshold: float = 0.6
-    min_cut_interval: float = 2.5
-    max_cuts: int | None = None
-    broll_duration: float = 2.5
-    width: int = 1080
-    height: int = 1920
-    fps: float = 30.0
-    add_subtitles: bool = True
-    skip_asr: bool = False
-    name: str = "AI合成"
-
-
-class CreateJobReq(BaseModel):
-    name: str = "AI合成"
-    main_file_id: str
-    broll_file_ids: list[str]
-    options: JobOptions = JobOptions()
-
-
-def _run_job_sync(job: JobInfo, main_path: str, broll_paths: list[str], options: dict) -> None:
-    """在后台线程里跑处理。"""
-    job.status = "running"
-    job.started_at = time.time()
-    job.progress_log.append("开始处理")
-
-    # 用 logging 把 capcut-draft 的日志也存到 progress_log
-    capcut_logger = logging.getLogger("capcut-draft")
-    handler_id = f"job_{job.id}"
-    job_log = logging.getLogger(handler_id)
-    job_log.setLevel(logging.INFO)
-
-    class _ListHandler(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:
-            job.progress_log.append(self.format(record))
-
-    h = _ListHandler()
-    h.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
-    capcut_logger.addHandler(h)
-
-    try:
-        p = _process_one(
-            Path(main_path),
-            [Path(p) for p in broll_paths],
-            OUTPUT_DIR,
-            options.get("name", job.name),
-            pause_threshold=options.get("pause_threshold", 0.6),
-            min_cut_interval=options.get("min_cut_interval", 2.5),
-            max_cuts=options.get("max_cuts"),
-            broll_duration=options.get("broll_duration", 2.5),
-            width=options.get("width", 1080),
-            height=options.get("height", 1920),
-            fps=options.get("fps", 30.0),
-            add_subtitles=options.get("add_subtitles", True),
-            skip_asr=options.get("skip_asr", False),
-            log=capcut_logger,
-        )
-        job.draft_path = p
-        job.status = "success"
-        job.progress_log.append(f"完成: {p}")
-    except Exception as e:
-        job.status = "failed"
-        job.error = str(e)
-        job.progress_log.append(f"失败: {e}")
-        log.exception("job %s failed", job.id)
-    finally:
-        capcut_logger.removeHandler(h)
-        job.finished_at = time.time()
-
-
-@app.post("/api/jobs", status_code=201,
-             dependencies=[Depends(auth_mod.get_current_user)])
-def create_job(req: CreateJobReq, bg: BackgroundTasks) -> dict:
-    with _FILES_LOCK:
-        main_path = _MAIN_FILES.get(req.main_file_id)
-        broll_paths = [_BROLL_FILES[fid] for fid in req.broll_file_ids if fid in _BROLL_FILES]
-    if not main_path or not Path(main_path).exists():
-        raise HTTPException(400, f"主视频不存在或已过期: {req.main_file_id}")
-    if not broll_paths:
-        raise HTTPException(400, "请至少上传一个 B-roll 素材")
-
-    job = JobInfo(
-        id=uuid.uuid4().hex[:12],
-        name=req.name,
-        main_file=Path(main_path).name,
-        broll_files=[Path(p).name for p in broll_paths],
-        options=req.options.model_dump() | {"name": req.name},
-    )
-    with _JOBS_LOCK:
-        _JOBS[job.id] = job
-    bg.add_task(_run_job_sync, job, main_path, broll_paths, job.options)
-    return {"job_id": job.id, "status": job.status}
-
-
-@app.get("/api/jobs", dependencies=[Depends(auth_mod.get_current_user)])
-def list_jobs() -> dict:
-    with _JOBS_LOCK:
-        items = [
-            {
-                "id": j.id,
-                "name": j.name,
-                "status": j.status,
-                "main_file": j.main_file,
-                "broll_count": len(j.broll_files),
-                "created_at": j.created_at,
-                "finished_at": j.finished_at,
-                "draft_path": j.draft_path,
-                "error": j.error,
-            }
-            for j in _JOBS.values()
-        ]
-    items.sort(key=lambda x: x["created_at"], reverse=True)
-    return {"jobs": items, "count": len(items)}
-
-
-@app.get("/api/jobs/{job_id}",
-            dependencies=[Depends(auth_mod.get_current_user)])
-def get_job(job_id: str) -> dict:
-    with _JOBS_LOCK:
-        j = _JOBS.get(job_id)
-    if not j:
-        raise HTTPException(404, "job not found")
-    return {
-        "id": j.id,
-        "name": j.name,
-        "status": j.status,
-        "main_file": j.main_file,
-        "broll_files": j.broll_files,
-        "options": j.options,
-        "created_at": j.created_at,
-        "started_at": j.started_at,
-        "finished_at": j.finished_at,
-        "error": j.error,
-        "draft_path": j.draft_path,
-        "progress": j.progress_log[-30:],
-    }
-
-
-@app.get("/api/jobs/{job_id}/download")
-def download_job(job_id: str) -> FileResponse:
-    with _JOBS_LOCK:
-        j = _JOBS.get(job_id)
-    if not j or not j.draft_path:
-        raise HTTPException(404, "草稿不存在或任务未完成")
-    draft = Path(j.draft_path)
-    if not draft.exists():
-        raise HTTPException(404, "草稿文件夹已丢失")
-
-    # 打包成 zip
-    zip_path = OUTPUT_DIR / f"{job_id}.zip"
-    if not zip_path.exists():
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for p in draft.rglob("*"):
-                zf.write(p, p.relative_to(draft.parent))
-    return FileResponse(
-        str(zip_path),
-        media_type="application/zip",
-        filename=f"{j.name}.zip",
-    )
-
-
-@app.delete("/api/jobs/{job_id}",
-               dependencies=[Depends(auth_mod.get_current_user)])
-def delete_job(job_id: str) -> dict:
-    with _JOBS_LOCK:
-        j = _JOBS.get(job_id)
-        if not j:
-            raise HTTPException(404, "job not found")
-        if j.draft_path:
-            shutil.rmtree(j.draft_path, ignore_errors=True)
-        zip_path = OUTPUT_DIR / f"{job_id}.zip"
-        zip_path.unlink(missing_ok=True)
-        del _JOBS[job_id]
-    return {"deleted": job_id}
+    """返回自定义头像作为网站图标。"""
+    return Response(content=_load_favicon(), media_type=_FAVICON_MIME)
 
 
 def main() -> None:
-    """命令行入口：`python -m capcut_draft.web`"""
+    """命令行入口：`python -m capcut_draft_server.web`"""
     import uvicorn
     _setup_logging()
     uvicorn.run(
-        "capcut_draft.web:app",
+        "capcut_draft_server.web:app",
         host="0.0.0.0",
         port=8000,
         reload=False,

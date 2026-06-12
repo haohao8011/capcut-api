@@ -39,9 +39,8 @@ fi
 echo "==> 2. venv + 客户端依赖"
 [ -d $APP_DIR/.venv ] || python3 -m venv $APP_DIR/.venv
 $APP_DIR/.venv/bin/pip install -q --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple
-$APP_DIR/.venv/bin/pip install -q httpx pyyaml fastapi uvicorn pydantic -i https://pypi.tuna.tsinghua.edu.cn/simple
-# 客户端也共用服务端的 deps（pyJianYingDraft / funasr 等）
-$APP_DIR/.venv/bin/pip install -q -r $APP_DIR/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# monorepo 拆 3 个子包（common + client）：common 装 pyJianYingDraft/funasr/torch 等大依赖，client 装轻量封装
+$APP_DIR/.venv/bin/pip install -e $APP_DIR/common -e $APP_DIR/client -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 echo "==> 3. systemd --user service"
 mkdir -p $HOME/.config/systemd/user
@@ -54,10 +53,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=$APP_DIR
-Environment="PYTHONPATH=$APP_DIR/src"
 Environment="PYTHONIOENCODING=utf-8"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=$APP_DIR/.venv/bin/python -m capcut_draft.client -c $CONFIG_DIR/client.yaml
+ExecStart=$APP_DIR/.venv/bin/python -m capcut_draft_client -c $CONFIG_DIR/client.yaml
 Restart=always
 RestartSec=5
 
@@ -79,5 +77,5 @@ echo "  配置:    $CONFIG_DIR/client.yaml"
 echo "  日志:    journalctl --user -u $SERVICE_NAME -f"
 echo
 echo "  ⚠️  客户端 UI 默认只绑 127.0.0.1，不暴露公网"
-echo "  ⚠️  所有素材/草稿永远留在本机，云端不缓存文件"
+echo "  ⚠️  素材永远留在本机；生成的草稿 .zip 会上传到云端（默认 5GB/人）"
 echo "=========================================="

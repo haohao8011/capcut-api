@@ -45,9 +45,12 @@ def select_cut_points(
             filtered[-1] = c
     cuts = filtered
 
-    if max_cuts is not None and len(cuts) > max_cuts:
-        # 均匀采样
-        step = len(cuts) / max_cuts
-        cuts = [cuts[int(i * step)] for i in range(max_cuts)]
+    if max_cuts is not None:
+        if max_cuts <= 0:
+            return []
+        if len(cuts) > max_cuts:
+            # 均匀采样
+            step = len(cuts) / max_cuts
+            cuts = [cuts[int(i * step)] for i in range(max_cuts)]
 
     return cuts

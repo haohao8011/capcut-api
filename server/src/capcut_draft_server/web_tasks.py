@@ -35,8 +35,10 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 class CreateTaskReq(BaseModel):
     workflow_id: str
     workflow_name: Optional[str] = None
-    main_asset_id: Optional[int] = None
+    main_asset_id: Optional[int] = None       # 客户端扫盘的素材
+    main_upload_id: Optional[int] = None      # Web 上传的素材（新增）
     broll_asset_ids: list[int] = []
+    broll_upload_ids: list[int] = []          # Web 上传的 B-roll（新增）
     options: dict = {}
     output_dir: Optional[str] = None  # 客户端写入的本地目录（可由客户端默认）
 
@@ -95,15 +97,19 @@ def create_task(
     user: Annotated[auth_mod.User, Depends(auth_mod.get_current_user)],
     db: Annotated[auth_mod.Session, Depends(auth_mod.get_db)],
 ) -> dict:
-    """用户创建任务：默认派给 owner 自己的客户端（NULL = 公共池）。"""
-    if req.main_asset_id is None and not req.broll_asset_ids:
+    """用户创建任务：支持客户端扫盘素材和 Web 上传素材两种来源。"""
+    has_main = req.main_asset_id is not None or req.main_upload_id is not None
+    has_broll = bool(req.broll_asset_ids) or bool(req.broll_upload_ids)
+    if not has_main and not has_broll:
         raise HTTPException(400, "至少要选 1 个主视频或 B-roll")
     t = models.Task(
         owner_id=user.id,
         workflow_id=req.workflow_id,
         workflow_name=req.workflow_name,
         main_asset_id=req.main_asset_id,
+        main_upload_id=req.main_upload_id,
         broll_asset_ids=req.broll_asset_ids,
+        broll_upload_ids=req.broll_upload_ids,
         options=req.options,
         output_dir=req.output_dir,
         status="pending",
@@ -218,13 +224,11 @@ def queue_pending(
     client: Annotated[models.Client, Depends(models.get_current_client)],
     db: Annotated[auth_mod.Session, Depends(auth_mod.get_db)],
 ) -> dict:
-    """客户端轮询"我能领的"任务：
-    - owner = 我（client.owner_id == client.id）
-    - 或 owner = 我的 owner（即员工机）
-    - 或 公共池（task.owner_id == 0...）暂未启用
+    """客户端轮询"我能领的"任务。
 
-    返回的每条 task 都会附 main_asset.path 和 broll_assets[].path，
-    worker 直接用这个 path 在本机读文件 — **云端不传输文件内容**。
+    返回的每条 task 都会附：
+    - main_asset.path / broll_assets[].path（客户端扫盘素材，本地路径）
+    - main_upload / broll_uploads（Web 上传素材，需从服务器下载）
     """
     from sqlalchemy import or_
     q = models.select(models.Task).where(
@@ -239,19 +243,40 @@ def queue_pending(
     out = []
     for t in items:
         d = t.to_dict(include_options=True)
-        # 拼 main_asset 路径引用
+        # 拼 main_asset 路径引用（客户端扫盘）
         d["main_asset"] = None
         if t.main_asset_id:
             a = db.get(models.Asset, t.main_asset_id)
             if a:
                 d["main_asset"] = {"id": a.id, "path": a.path, "name": a.name}
-        # 拼 broll_assets 路径引用
+        # 拼 broll_assets 路径引用（客户端扫盘）
         brolls = []
         for aid in (t.broll_asset_ids or []):
             a = db.get(models.Asset, aid)
             if a:
                 brolls.append({"id": a.id, "path": a.path, "name": a.name})
         d["broll_assets"] = brolls
+
+        # 拼 main_upload（Web 上传素材）
+        d["main_upload"] = None
+        if t.main_upload_id:
+            ua = db.get(models.UploadedAsset, t.main_upload_id)
+            if ua:
+                d["main_upload"] = {
+                    "id": ua.id, "filename": ua.filename,
+                    "size": ua.size, "kind": ua.kind,
+                }
+        # 拼 broll_uploads（Web 上传 B-roll）
+        broll_uploads = []
+        for uid in (t.broll_upload_ids or []):
+            ua = db.get(models.UploadedAsset, uid)
+            if ua:
+                broll_uploads.append({
+                    "id": ua.id, "filename": ua.filename,
+                    "size": ua.size, "kind": ua.kind,
+                })
+        d["broll_uploads"] = broll_uploads
+
         out.append(d)
     return {"tasks": out}
 

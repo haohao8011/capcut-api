@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工作台 · capcut-draft</title>
+<script>
+(function(){
+  var t=localStorage.getItem('capcut_theme');
+  if(!t)t=window.matchMedia('(prefers-color-scheme:light)').matches?'light':'dark';
+  document.documentElement.setAttribute('data-theme',t);
+})();
+</script>
+<style>
+  :root {
+    --bg-0: #0a0b0e; --bg-1: #11131a; --bg-2: #181b24; --bg-3: #21242f;
+    --line: #2a2e3a; --line-strong: #3a3f4f;
+    --fg-0: #e8eaf0; --fg-1: #aab0c0; --fg-2: #6c7385; --fg-3: #454a5a;
+    --accent: #00d4ff; --accent-2: #ff6a00; --accent-3: #6effa1; --danger: #ff4d6d;
+    --shadow-1: 0 1px 0 rgba(255,255,255,.04) inset, 0 1px 2px rgba(0,0,0,.4);
+    --card-head-bg: rgba(255,255,255,.015);
+    --tr-hover: rgba(255,255,255,.02);
+    --modal-bg: rgba(0,0,0,.7);
+    --sidebar-bg: #0e1017; --sidebar-w: 240px;
+    --privacy-bg: linear-gradient(135deg, #0d3a2c, #0a2e1e);
+    --privacy-border: #1f6b4f; --privacy-fg: #b6e0cd;
+    --r-sm: 4px; --r-md: 6px; --r-lg: 10px;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Code", monospace;
+    --sans: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", sans-serif;
+  }
+  [data-theme="light"] {
+    --bg-0: #f0f2f5; --bg-1: #ffffff; --bg-2: #f8f9fb; --bg-3: #e5e7eb;
+    --line: #e0e2e8; --line-strong: #c9cdd6;
+    --fg-0: #1a1d26; --fg-1: #4b5563; --fg-2: #6b7280; --fg-3: #9ca3af;
+    --accent: #0891b2; --accent-2: #ea580c; --accent-3: #16a34a; --danger: #dc2626;
+    --shadow-1: 0 1px 3px rgba(0,0,0,.06), 0 1px 0 rgba(0,0,0,.03);
+    --card-head-bg: rgba(0,0,0,.02);
+    --tr-hover: rgba(0,0,0,.02);
+    --modal-bg: rgba(0,0,0,.35);
+    --sidebar-bg: #ffffff;
+    --privacy-bg: linear-gradient(135deg, #ecfdf5, #d1fae5);
+    --privacy-border: #6ee7b7; --privacy-fg: #065f46;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg-0); color: var(--fg-0); font-family: var(--sans); margin: 0; padding: 0; }
+  body { min-height: 100vh; line-height: 1.55; }
+  h1, h2, h3 { font-weight: 600; letter-spacing: .02em; margin: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  .layout { display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-w); background: var(--sidebar-bg);
+    border-right: 1px solid var(--line); display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh; flex-shrink: 0; transition: width .2s;
+  }
+  .sidebar .brand { display: flex; align-items: center; gap: 12px; padding: 20px 18px 16px; }
+  .sidebar .logo {
+    width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent) 0%, #4a8df8 100%);
+    display: grid; place-items: center; color: #0a0b0e; font-weight: 800;
+    box-shadow: 0 0 24px rgba(0,212,255,.4);
+  }
+  .sidebar .brand-text h1 { font-size: 15px; white-space: nowrap; }
+  .sidebar .brand-text small { display: block; font-family: var(--mono); color: var(--fg-2); font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
+
+  .sidebar nav { flex: 1; padding: 8px 10px; overflow-y: auto; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: var(--r-md); cursor: pointer;
+    color: var(--fg-1); font-size: 14px; font-weight: 500;
+    transition: all .15s; border: 0; background: transparent; width: 100%;
+    text-align: left; font-family: var(--sans); white-space: nowrap;
+  }
+  .nav-item:hover { color: var(--fg-0); background: var(--bg-2); }
+  .nav-item.active { color: var(--accent); background: rgba(0,212,255,.08); }
+  .nav-item .icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+  .nav-item .badge { margin-left: auto; padding: 1px 7px; background: var(--bg-3); border-radius: 10px; font-family: var(--mono); font-size: 11px; color: var(--fg-1); }
+  .nav-item.active .badge { background: rgba(0,212,255,.15); color: var(--accent); }
+
+  .sidebar-footer { padding: 14px 18px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .sidebar-footer .user-info { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+  .sidebar-footer .user-name { font-family: var(--mono); font-size: 12px; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sidebar-footer .actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+  .theme-toggle, .btn-logout-sidebar {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--bg-3); border: 1px solid var(--line);
+    cursor: pointer; display: grid; place-items: center; font-size: 14px;
+    transition: all .2s; color: var(--fg-2);
+  }
+  .theme-toggle:hover { color: var(--fg-0); background: var(--bg-2); }
+  .btn-logout-sidebar:hover { color: var(--danger); background: rgba(255,77,109,.1); }
+  [data-theme="light"] .icon-moon { display: inline; } [data-theme="light"] .icon-sun { display: none; }
+  [data-theme="dark"] .icon-moon { display: none; } [data-theme="dark"] .icon-sun { display: inline; }
+
+  /* Main */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .main-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px; border-bottom: 1px solid var(--line);
+    background: var(--bg-1); position: sticky; top: 0; z-index: 10;
+  }
+  .main-header h2 { font-size: 16px; }
+  .main-header .meta { display: flex; gap: 12px; font-size: 12px; color: var(--fg-2); font-family: var(--mono); align-items: center; }
+  .main-header .meta a { color: var(--fg-1); }
+  .main-content { flex: 1; padding: 22px 28px; overflow-y: auto; }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  .privacy-banner {
+    background: var(--privacy-bg); border: 1px solid var(--privacy-border);
+    border-radius: var(--r-md); padding: 10px 14px; margin-bottom: 18px;
+    font-size: 13px; color: var(--privacy-fg); display: flex; align-items: center; gap: 10px;
+  }
+  .privacy-banner strong { color: var(--accent-3); }
+
+  /* card */
+  .card { background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); margin-bottom: 18px; overflow: hidden; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--card-head-bg); }
+  .card-head h2 { font-size: 14px; font-weight: 500; letter-spacing: .5px; }
+  .card-head .hint { font-size: 11px; color: var(--fg-2); font-family: var(--mono); }
+  .card-body { padding: 18px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; color: var(--fg-2); font-weight: 500; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--tr-hover); }
+  .empty { padding: 30px; text-align: center; color: var(--fg-3); font-family: var(--mono); font-size: 12px; }
+
+  .status { display: inline-block; padding: 2px 8px; border-radius: 4px; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .status.pending  { background: rgba(108,115,133,.2); color: var(--fg-1); }
+  .status.claimed  { background: rgba(0,212,255,.15); color: var(--accent); }
+  .status.running  { background: rgba(255,106,0,.15); color: var(--accent-2); }
+  .status.done     { background: rgba(110,255,161,.15); color: var(--accent-3); }
+  .status.failed   { background: rgba(255,77,109,.15); color: var(--danger); }
+  .status.canceled { background: rgba(108,115,133,.15); color: var(--fg-2); }
+  .progress-bar { height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+  .progress-bar > div { height: 100%; background: var(--accent); transition: width .4s; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #0a0b0e; border: 0; padding: 6px 14px; border-radius: var(--r-sm); cursor: pointer; font-weight: 600; font-size: 12px; font-family: var(--sans); transition: all .15s; }
+  .btn:hover:not(:disabled) { background: #1ddfff; }
+  .btn:disabled { background: var(--bg-3); color: var(--fg-3); cursor: not-allowed; }
+  .btn.secondary { background: transparent; color: var(--fg-1); border: 1px solid var(--line-strong); }
+  .btn.secondary:hover:not(:disabled) { color: var(--fg-0); border-color: var(--accent); background: rgba(0,212,255,.05); }
+  .btn.danger { color: var(--danger); border-color: rgba(255,77,109,.3); }
+  .btn.danger:hover:not(:disabled) { background: rgba(255,77,109,.1); border-color: var(--danger); }
+  .btn.small { padding: 4px 10px; font-size: 11px; }
+  .row-actions { display: flex; gap: 6px; }
+
+  .modal-bg { position: fixed; inset: 0; background: var(--modal-bg); display: none; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-bg.active { display: flex; }
+  .modal { background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px; max-width: 540px; width: 90%; }
+  .modal h3 { margin-bottom: 12px; font-size: 16px; }
+  .modal p { color: var(--fg-1); font-size: 13px; margin-bottom: 8px; }
+  .modal .token-box { background: var(--bg-0); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 10px; font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--accent-3); }
+
+  .toast-stack { position: fixed; top: 20px; right: 20px; z-index: 1100; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+  .toast { background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--r-sm); padding: 10px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.5); animation: slide-in .25s ease; }
+  .toast.error { border-left-color: var(--danger); }
+  .toast.success { border-left-color: var(--accent-3); }
+  .toast.warn { border-left-color: var(--accent-2); }
+  @keyframes slide-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  .settings-form { max-width: 400px; }
+  .settings-form .field { margin-bottom: 16px; }
+  .settings-form label { display: block; font-size: 12px; color: var(--fg-1); margin-bottom: 6px; font-family: var(--mono); letter-spacing: 1px; }
+  .settings-form input { width: 100%; background: var(--bg-0); border: 1px solid var(--line-strong); color: var(--fg-0); padding: 10px 12px; border-radius: var(--r-sm); font-family: var(--mono); font-size: 14px; }
+  .settings-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,.15); }
+
+  .mono { font-family: var(--mono); }
+  .dim { color: var(--fg-2); }
+  .small { font-size: 11px; }
+
+  @media (max-width: 768px) {
+    .sidebar { width: 60px; }
+    .sidebar .brand-text, .nav-item .label, .nav-item .badge, .sidebar-footer .user-name { display: none; }
+    .sidebar .brand { padding: 16px 12px; justify-content: center; }
+    .nav-item { padding: 12px; justify-content: center; }
+    .sidebar-footer { flex-direction: column; padding: 10px; }
+    .main-content { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">C</div>
+      <div class="brand-text">
+        <h1>capcut-draft</h1>
+        <small>数字人 + B-roll 工作台</small>
+      </div>
+    </div>
+    <nav>
+      <button class="nav-item active" data-nav="upload">
+        <span class="icon">📤</span><span class="label">上传素材</span>
+      </button>
+      <button class="nav-item" data-nav="assets">
+        <span class="icon">📂</span><span class="label">素材库</span><span class="badge" id="badge-assets">0</span>
+      </button>
+      <button class="nav-item" data-nav="tasks">
+        <span class="icon">📋</span><span class="label">我的任务</span><span class="badge" id="badge-tasks">0</span>
+      </button>
+      <button class="nav-item" data-nav="drafts">
+        <span class="icon">📦</span><span class="label">我的草稿</span><span class="badge" id="badge-drafts">0</span>
+      </button>
+      <button class="nav-item" data-nav="settings">
+        <span class="icon">⚙️</span><span class="label">个人设置</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <span class="user-name" id="me-name">…</span>
+      </div>
+      <div class="actions">
+        <button class="theme-toggle" id="theme-btn" title="切换主题"><span class="icon-sun">☀️</span><span class="icon-moon">🌙</span></button>
+        <button class="btn-logout-sidebar" id="btn-logout" title="退出登录">🚪</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="main-header">
+      <h2 id="page-title">上传素材</h2>
+      <div class="meta">
+        <a href="/docs" target="_blank" rel="noopener">API DOCS</a>
+      </div>
+    </header>
+    <div class="main-content">
+
+      <div class="privacy-banner">
+        ☁️ <strong>云端存储：</strong>素材和草稿均存储在服务器，可随时上传和管理。
+        素材配额 3GB + 草稿配额 2GB，共 5GB。
+      </div>
+
+      <!-- Section: Upload -->
+      <div class="section active" data-section="upload">
+        <div class="card">
+          <div class="card-head">
+            <h2>上传素材</h2>
+            <div class="row-actions">
+              <select id="upload-kind" class="btn secondary small" style="padding: 4px 10px;">
+                <option value="main">主视频（数字人/口播）</option>
+                <option value="broll">B-roll 素材</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="drop-zone" style="border: 2px dashed var(--line-strong); border-radius: var(--r-md); padding: 40px; text-align: center; cursor: pointer; transition: all .2s;" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault(); this.style.borderColor='var(--accent)'; this.style.background='rgba(0,212,255,.05)'" ondragleave="this.style.borderColor='var(--line-strong)'; this.style.background=''" ondrop="event.preventDefault(); this.style.borderColor='var(--line-strong)'; this.style.background=''; handleFiles(event.dataTransfer.files)">
+              <div style="font-size: 36px; margin-bottom: 8px;">📁</div>
+              <div style="color: var(--fg-1); font-size: 14px;">拖拽文件到此处，或 <span style="color: var(--accent); cursor: pointer;">点击选择文件</span></div>
+              <div style="color: var(--fg-2); font-size: 12px; margin-top: 6px; font-family: var(--mono);">支持 .mp4 .mov .avi .mkv .webm · 单文件 ≤ 1GB</div>
+            </div>
+            <input type="file" id="file-input" multiple accept=".mp4,.mov,.avi,.mkv,.webm" style="display:none" onchange="handleFiles(this.files)">
+            <div id="upload-queue" style="margin-top: 16px;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>配额使用情况</h2></div>
+          <div class="card-body">
+            <div style="margin-bottom: 14px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span class="small dim">📤 素材配额</span><span class="small mono dim" id="asset-quota-text">加载中…</span></div>
+              <div class="progress-bar" style="height: 8px;"><div id="asset-quota-bar" style="width: 0%; background: var(--accent-3);"></div></div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span class="small dim">📦 草稿配额</span><span class="small mono dim" id="draft-quota-text-bar">加载中…</span></div>
+              <div class="progress-bar" style="height: 8px;"><div id="draft-quota-bar" style="width: 0%; background: var(--accent-3);"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Assets -->
+      <div class="section" data-section="assets">
+        <div class="card">
+          <div class="card-head">
+            <h2>素材库</h2>
+            <div class="row-actions">
+              <select id="filter-source" class="btn secondary small" style="padding: 4px 10px;" onchange="refreshAssets()">
+                <option value="">全部来源</option><option value="web_upload">Web 上传</option><option value="client_scan">客户端扫盘</option>
+              </select>
+              <select id="filter-kind" class="btn secondary small" style="padding: 4px 10px;" onchange="refreshAssets()">
+                <option value="">全部类型</option><option value="main">主视频</option><option value="broll">B-roll</option>
+              </select>
+              <button class="btn secondary small" onclick="refreshAssets()">🔄 刷新</button>
+            </div>
+          </div>
+          <div class="card-body" style="padding: 0">
+            <table>
+              <thead><tr><th>#</th><th>文件名</th><th>类型</th><th>大小</th><th>时长</th><th>来源</th><th>时间</th><th>操作</th></tr></thead>
+              <tbody id="assets-tbody"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Tasks -->
+      <div class="section" data-section="tasks">
+        <div class="card">
+          <div class="card-head">
+            <h2>我的任务</h2>
+            <div class="row-actions">
+              <select id="filter-status" class="btn secondary small" style="padding: 4px 10px;">
+                <option value="">全部状态</option><option value="pending">pending</option><option value="claimed">claimed</option>
+                <option value="running">running</option><option value="done">done</option>
+                <option value="failed">failed</option><option value="canceled">canceled</option>
+              </select>
+              <button class="btn" onclick="openNewTaskModal()">+ 新建任务</button>
+            </div>
+          </div>
+          <div class="card-body" style="padding: 0">
+            <table id="tasks-table">
+              <thead><tr><th>#</th><th>工作流</th><th>状态</th><th>主视频</th><th>B-roll</th><th>进度</th><th>创建</th><th>结果</th><th>操作</th></tr></thead>
+              <tbody id="tasks-tbody"><tr><td colspan="9" class="empty">加载中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Drafts -->
+      <div class="section" data-section="drafts">
+        <div class="card">
+          <div class="card-head">
+            <h2>我的草稿（云端）</h2>
+            <div class="row-actions">
+              <span class="hint" id="draft-quota-hint">加载中…</span>
+              <button class="btn secondary small" onclick="refreshDrafts()">🔄 刷新</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div style="margin-bottom: 16px;">
+              <div class="progress-bar" style="height: 8px;"><div id="quota-bar" style="width: 0%; background: var(--accent-3);"></div></div>
+              <div class="small dim" id="quota-text" style="margin-top: 6px; font-family: var(--mono);"></div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
+              <input type="text" id="draft-q" placeholder="🔍 任务名/文件名" class="btn secondary small" style="text-align: left; min-width: 200px; padding: 6px 10px;">
+              <input type="number" id="draft-min-size" placeholder="最小 KB" min="0" class="btn secondary small" style="text-align: left; width: 110px; padding: 6px 10px;">
+              <input type="number" id="draft-max-size" placeholder="最大 KB" min="0" class="btn secondary small" style="text-align: left; width: 110px; padding: 6px 10px;">
+              <input type="date" id="draft-date-from" class="btn secondary small" style="padding: 6px 10px;">
+              <span class="small dim" style="align-self: center;">~</span>
+              <input type="date" id="draft-date-to" class="btn secondary small" style="padding: 6px 10px;">
+              <select id="draft-sort" class="btn secondary small" style="padding: 4px 10px;">
+                <option value="created_desc">最新优先</option><option value="created_asc">最旧优先</option>
+                <option value="size_desc">最大优先</option><option value="size_asc">最小优先</option>
+                <option value="name_asc">名字 A→Z</option>
+              </select>
+              <button class="btn small" onclick="refreshDrafts()">应用</button>
+              <button class="btn secondary small" onclick="clearDraftFilters()">重置</button>
+            </div>
+          </div>
+          <div class="card-body" style="padding: 0">
+            <table>
+              <thead><tr><th>#</th><th>文件名</th><th>任务</th><th>工作流</th><th>大小</th><th>上传时间</th><th>下载</th><th>操作</th></tr></thead>
+              <tbody id="drafts-tbody"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody>
+            </table>
+            <div id="drafts-pager" style="padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line);">
+              <span class="small dim mono" id="drafts-total">共 0 条</span>
+              <div class="row-actions">
+                <button class="btn secondary small" id="drafts-prev" onclick="draftPage(-1)">‹ 上一页</button>
+                <span class="small mono" id="drafts-page-now">1</span>
+                <button class="btn secondary small" id="drafts-next" onclick="draftPage(1)">下一页 ›</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Settings -->
+      <div class="section" data-section="settings">
+        <div class="card">
+          <div class="card-head"><h2>修改密码</h2></div>
+          <div class="card-body">
+            <div class="settings-form">
+              <div class="field"><label for="old-pwd">旧密码</label><input type="password" id="old-pwd" autocomplete="current-password"></div>
+              <div class="field"><label for="new-pwd">新密码（≥6 位）</label><input type="password" id="new-pwd" autocomplete="new-password"></div>
+              <div class="field"><label for="confirm-pwd">确认新密码</label><input type="password" id="confirm-pwd" autocomplete="new-password"></div>
+              <button class="btn" onclick="changePassword()">确认修改</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>账号信息</h2></div>
+          <div class="card-body"><div class="small dim mono" id="account-info">加载中…</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modals -->
+<div class="modal-bg" id="modal-new-task">
+  <div class="modal" style="max-width: 720px;">
+    <h3>📋 新建任务</h3>
+    <p>从素材库选择主视频和 B-roll（支持 Web 上传和客户端扫盘素材）。</p>
+    <div style="margin-top: 12px;">
+      <div style="margin-bottom: 12px;"><label class="small dim" style="display:block; margin-bottom: 4px;">主视频（数字人/口播）</label><select id="new-task-main" class="btn secondary" style="width: 100%; padding: 8px;"><option value="">-- 请先选主视频 --</option></select></div>
+      <div style="margin-bottom: 12px;"><label class="small dim" style="display:block; margin-bottom: 4px;">B-roll 素材（可多选，Ctrl/Shift）</label><select id="new-task-broll" multiple class="btn secondary" style="width: 100%; padding: 8px; height: 120px;"></select></div>
+      <div style="margin-bottom: 12px;"><label class="small dim" style="display:block; margin-bottom: 4px;">工作流</label><select id="new-task-wf" class="btn secondary" style="width: 100%; padding: 8px;"><option value="default">默认参数</option></select></div>
+    </div>
+    <div class="row-actions" style="margin-top: 12px; justify-content: flex-end;">
+      <button class="btn secondary" onclick="document.getElementById('modal-new-task').classList.remove('active')">取消</button>
+      <button class="btn" onclick="submitNewTask()">提交</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="modal-share">
+  <div class="modal">
+    <h3>🔗 分享草稿</h3>
+    <p>把下面这个链接发给同事，对方点开后点"确认下载"就能拿到 .zip。<br><span class="dim small">每个链接 <b>7 天有效</b> 且 <b>只能下载 1 次</b>。</span></p>
+    <div class="token-box" id="share-link" style="font-size: 12px;"></div>
+    <div class="row-actions" style="margin-top: 12px; justify-content: flex-end;">
+      <button class="btn secondary" onclick="document.getElementById('modal-share').classList.remove('active')">关闭</button>
+      <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('share-link').textContent); toast('链接已复制', 'success');">📋 复制链接</button>
+    </div>
+  </div>
+</div>
+<div class="toast-stack" id="toasts" aria-live="polite"></div>
+
+<script>
+'use strict';
+let _me = null;
+// ============== 鉴权 wrapper ==============
+(function() {
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(url, opts) {
+    opts = opts || {};
+    const u = typeof url === 'string' ? url : url.url;
+    const token = localStorage.getItem('capcut_token');
+    if (token) {
+      const h = new Headers(opts.headers || {});
+      if (!h.has('Authorization')) h.set('Authorization', 'Bearer ' + token);
+      opts.headers = h;
+    }
+    return _origFetch(url, opts).then(r => {
+      const isAuthApi = u.includes('/api/auth/login') || u.includes('/api/auth/refresh');
+      if (r.status === 401 && !isAuthApi && !window.location.pathname.startsWith('/app/login')) {
+        localStorage.removeItem('capcut_token');
+        localStorage.removeItem('capcut_refresh');
+        localStorage.removeItem('capcut_user');
+        window.location.href = '/app/login.html';
+      }
+      return r;
+    });
+  };
+  if (!localStorage.getItem('capcut_token')) { window.location.href = '/app/login.html'; return; }
+
+  document.getElementById('theme-btn')?.addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('capcut_theme', next);
+  });
+
+  fetch('/api/auth/me').then(r => {
+    if (!r.ok) { window.location.href = '/app/login.html'; return; }
+    return r.json();
+  }).then(me => {
+    if (!me) return;
+    _me = me;
+    const el = document.getElementById('me-name');
+    if (el) el.textContent = me.username;
+    if (me.is_admin) { /* admin link removed */ }
+    const info = document.getElementById('account-info');
+    if (info) {
+      info.innerHTML = `用户名: <strong>${me.username}</strong><br>邮箱: ${me.email || '未设置'}<br>角色: ${me.is_admin ? '管理员' : '普通用户'}<br>注册时间: ${me.created_at ? new Date(me.created_at).toLocaleString() : '-'}`;
+    }
+  }).catch(() => { window.location.href = '/app/login.html'; });
+
+  document.getElementById('btn-logout')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (confirm('确认退出登录？')) {
+      localStorage.removeItem('capcut_token');
+      localStorage.removeItem('capcut_refresh');
+      localStorage.removeItem('capcut_user');
+      window.location.href = '/app/login.html';
+    }
+  });
+})();
+
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+function toast(msg, type='info', ms=3000) { const el = document.createElement('div'); el.className = 'toast ' + type; el.textContent = msg; $('#toasts').appendChild(el); setTimeout(() => el.remove(), ms); }
+function basename(p) { if (!p) return ''; const m = p.match(/[^\\/]+$/); return m ? m[0] : p; }
+function fmtTime(iso) { if (!iso) return '-'; const d = new Date(iso); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ============== Navigation ==============
+const pageTitles = { upload: '上传素材', assets: '素材库', tasks: '我的任务', drafts: '我的草稿', settings: '个人设置' };
+$$('.nav-item').forEach(btn => btn.addEventListener('click', () => {
+  $$('.nav-item').forEach(x => x.classList.remove('active'));
+  $$('.section').forEach(x => x.classList.remove('active'));
+  btn.classList.add('active');
+  $(`.section[data-section="${btn.dataset.nav}"]`).classList.add('active');
+  $('#page-title').textContent = pageTitles[btn.dataset.nav] || '';
+  if (btn.dataset.nav === 'upload') { refreshQuota(); }
+  if (btn.dataset.nav === 'assets') { refreshAssets(); }
+  if (btn.dataset.nav === 'tasks') refreshTasks();
+  if (btn.dataset.nav === 'drafts') { refreshDraftQuota(); refreshDrafts(); }
+}));
+
+// ============== Tasks ==============
+let workflowsCache = [];
+async function refreshTasks() {
+  try { const status = $('#filter-status').value; const url = '/api/tasks' + (status ? `?status=${status}` : '');
+    const r = await fetch(url); const data = await r.json(); const tbody = $('#tasks-tbody'); const tasks = data.tasks || [];
+    $('#badge-tasks').textContent = tasks.length;
+    if (tasks.length === 0) { tbody.innerHTML = '<tr><td colspan="9" class="empty">暂无任务</td></tr>'; return; }
+    tbody.innerHTML = tasks.map(t => `<tr>
+      <td class="mono">${t.id}</td><td>${escapeHtml(t.workflow_name || t.workflow_id)}</td>
+      <td><span class="status ${t.status}">${t.status}</span></td>
+      <td class="mono small">${t.main_asset_id ?? '-'}</td><td class="mono small">${(t.broll_asset_ids || []).length}</td>
+      <td><div class="small mono">${t.progress ?? 0}%</div><div class="progress-bar"><div style="width: ${t.progress ?? 0}%"></div></div></td>
+      <td class="small mono">${fmtTime(t.created_at)}</td>
+      <td class="small mono">${t.result_path ? '✅ ' + basename(t.result_path) : (t.error ? '❌' : '-')}</td>
+      <td><div class="row-actions">
+        <button class="btn small secondary" onclick="viewTask(${t.id})">查看</button>
+        ${t.status === 'failed' || t.status === 'canceled' ? `<button class="btn small secondary" onclick="retryTask(${t.id})">重试</button>` : ''}
+        ${t.status === 'pending' || t.status === 'claimed' || t.status === 'running' ? `<button class="btn small secondary danger" onclick="cancelTask(${t.id})">取消</button>` : ''}
+        <button class="btn small secondary danger" onclick="deleteTask(${t.id})">删</button>
+      </div></td></tr>`).join('');
+  } catch (e) { console.error(e); toast('加载任务失败: ' + e.message, 'error'); }
+}
+async function viewTask(id) { try { const r = await fetch(`/api/tasks/${id}`); const t = await r.json(); const logs = (t.logs || []).map(l => `[${l.level}] ${l.message}`).join('\n'); alert(`任务 #${t.id}\n状态: ${t.status}  进度: ${t.progress ?? 0}%\n主视频: ${t.main_asset_id ?? '-'}\nB-roll: ${(t.broll_asset_ids || []).join(', ')}\n结果: ${t.result_path || '(未完成)'}\n` + (t.error ? `\n❌ 错误: ${t.error}\n` : '') + (logs ? `\n📜 日志:\n${logs}` : '')); } catch (e) { toast('查看失败: ' + e.message, 'error'); } }
+async function cancelTask(id) { if (!confirm(`确认取消任务 #${id}？`)) return; try { const r = await fetch(`/api/tasks/${id}/cancel`, { method: 'POST' }); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); toast('已取消', 'success'); refreshTasks(); } catch (e) { toast('取消失败: ' + e.message, 'error'); } }
+async function retryTask(id) { if (!confirm(`确认重试任务 #${id}？`)) return; try { const r = await fetch(`/api/tasks/${id}/retry`, { method: 'POST' }); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); toast('已重置为 pending', 'success'); refreshTasks(); } catch (e) { toast('重试失败: ' + e.message, 'error'); } }
+async function deleteTask(id) { if (!confirm(`确认删除任务 #${id}？`)) return; try { const r = await fetch(`/api/tasks/${id}`, { method: 'DELETE' }); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); toast('已删除', 'success'); refreshTasks(); } catch (e) { toast('删除失败: ' + e.message, 'error'); } }
+$('#filter-status').addEventListener('change', refreshTasks);
+
+async function openNewTaskModal() {
+  try {
+    const r = await fetch('/api/assets?limit=500');
+    const data = await r.json();
+    const assets = data.assets || [];
+    const main = assets.filter(a => a.kind === 'main');
+    const broll = assets.filter(a => a.kind === 'broll');
+    const srcLabel = (a) => a.source === 'web_upload' ? '[Web上传]' : '[客户端]';
+    const mSel = $('#new-task-main');
+    mSel.innerHTML = '<option value="">-- 请先选主视频 --</option>' + main.map(a => `<option value="${a.source === 'web_upload' ? 'u' : 'c'}_${a.id}">${srcLabel(a)} ${escapeHtml(a.name)}</option>`).join('');
+    const bSel = $('#new-task-broll');
+    bSel.innerHTML = broll.map(a => `<option value="${a.source === 'web_upload' ? 'u' : 'c'}_${a.id}">${srcLabel(a)} ${escapeHtml(a.name)}</option>`).join('');
+    if (main.length === 0) toast('当前没有可用的主视频 — 请上传或确认客户端已扫盘', 'warn', 5000);
+  } catch (e) { toast('加载资产失败: ' + e.message, 'error'); return; }
+  try { const r = await fetch('/api/workflows'); const data = await r.json(); workflowsCache = data.workflows || []; const wSel = $('#new-task-wf'); wSel.innerHTML = '<option value="">默认参数</option>' + workflowsCache.map(w => `<option value="${escapeHtml(w.id)}">${escapeHtml(w.name)}</option>`).join(''); } catch {}
+  $('#modal-new-task').classList.add('active');
+}
+function parseAssetSelection(val) {
+  // "u_123" = upload id 123, "c_456" = client asset id 456
+  if (!val) return {};
+  const [prefix, idStr] = val.split('_');
+  const id = parseInt(idStr, 10);
+  return prefix === 'u' ? { upload_id: id } : { asset_id: id };
+}
+async function submitNewTask() {
+  const mainVal = $('#new-task-main').value;
+  const brollVals = Array.from($('#new-task-broll').selectedOptions).map(o => o.value);
+  const wfId = $('#new-task-wf').value;
+  if (!mainVal) { toast('请选主视频', 'warn'); return; }
+  const mainParsed = parseAssetSelection(mainVal);
+  const brollAssetIds = []; const brollUploadIds = [];
+  brollVals.forEach(v => { const p = parseAssetSelection(v); if (p.asset_id) brollAssetIds.push(p.asset_id); else if (p.upload_id) brollUploadIds.push(p.upload_id); });
+  const wf = workflowsCache.find(w => w.id === wfId);
+  const body = { workflow_id: wfId || 'default', workflow_name: wf?.name, options: wf?.options || {} };
+  if (mainParsed.asset_id) body.main_asset_id = mainParsed.asset_id;
+  if (mainParsed.upload_id) body.main_upload_id = mainParsed.upload_id;
+  body.broll_asset_ids = brollAssetIds;
+  body.broll_upload_ids = brollUploadIds;
+  try { const r = await fetch('/api/tasks', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) }); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); const t = await r.json(); toast(`任务 #${t.id} 已创建`, 'success'); $('#modal-new-task').classList.remove('active'); refreshTasks(); } catch (e) { toast('提交失败: ' + e.message, 'error'); }
+}
+
+// ============== Drafts ==============
+let draftPageNum = 1;
+const DRAFT_PAGE_SIZE = 20;
+function clearDraftFilters() { $('#draft-q').value = ''; $('#draft-min-size').value = ''; $('#draft-max-size').value = ''; $('#draft-date-from').value = ''; $('#draft-date-to').value = ''; $('#draft-sort').value = 'created_desc'; draftPageNum = 1; refreshDrafts(); }
+async function refreshDraftQuota() {
+  try { const r = await fetch('/api/drafts/quota'); const q = await r.json();
+    const bar = $('#quota-bar'); const text = $('#quota-text'); const hint = $('#draft-quota-hint');
+    if (q.unlimited) { bar.style.width = '5%'; bar.style.background = 'var(--accent-3)'; text.textContent = `已用 ${q.used_mb} MB · 无 quota 限制`; hint.textContent = `${q.draft_count} 个草稿 · 无限`; }
+    else { const pct = q.quota_bytes > 0 ? (q.used_bytes / q.quota_bytes * 100) : 0; bar.style.width = Math.min(100, pct).toFixed(1) + '%'; bar.style.background = pct > 90 ? 'var(--danger)' : pct > 70 ? 'var(--accent-2)' : 'var(--accent-3)'; text.textContent = `已用 ${q.used_mb} / ${q.quota_mb} MB  (${pct.toFixed(1)}%) · ${q.draft_count} 个草稿`; hint.textContent = `${q.draft_count} / ${q.quota_mb} MB`; }
+  } catch (e) { console.error(e); }
+}
+function buildDraftQuery() {
+  const p = new URLSearchParams(); const q = $('#draft-q').value.trim(); if (q) p.set('q', q);
+  const minS = parseInt($('#draft-min-size').value, 10); if (!isNaN(minS) && minS > 0) p.set('min_size', String(minS * 1024));
+  const maxS = parseInt($('#draft-max-size').value, 10); if (!isNaN(maxS) && maxS > 0) p.set('max_size', String(maxS * 1024));
+  const df = $('#draft-date-from').value; if (df) p.set('date_from', df + 'T00:00:00Z');
+  const dt = $('#draft-date-to').value; if (dt) p.set('date_to', dt + 'T23:59:59Z');
+  p.set('sort', $('#draft-sort').value); p.set('page', String(draftPageNum)); p.set('page_size', String(DRAFT_PAGE_SIZE)); return p.toString();
+}
+async function refreshDrafts() {
+  try { const r = await fetch('/api/drafts?' + buildDraftQuery()); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const data = await r.json(); const items = data.items || []; const tbody = $('#drafts-tbody');
+    $('#badge-drafts').textContent = data.total || 0;
+    $('#drafts-total').textContent = `共 ${data.total} 条 · 第 ${data.page} / ${Math.max(1, Math.ceil(data.total / DRAFT_PAGE_SIZE))} 页`;
+    $('#drafts-page-now').textContent = data.page;
+    $('#drafts-prev').disabled = data.page <= 1; $('#drafts-next').disabled = (data.page * DRAFT_PAGE_SIZE) >= data.total;
+    if (items.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无草稿 · 客户端 worker 生成完会自动上传到这里</td></tr>'; return; }
+    tbody.innerHTML = items.map(d => `<tr>
+      <td class="mono">${d.id}</td><td class="mono small" title="${escapeHtml(d.filename)}">${escapeHtml(d.filename)}</td>
+      <td>${escapeHtml(d.task_name || '-')}${d.task_id ? ` <span class="dim small mono">#${d.task_id}</span>` : ''}</td>
+      <td class="small">${escapeHtml(d.workflow_name || '-')}</td><td class="mono small">${fmtBytes(d.size)}</td>
+      <td class="small mono">${fmtTime(d.created_at)}</td>
+      <td class="small mono" title="最后下载：${d.last_downloaded_at || '从未'}">${d.download_count} 次</td>
+      <td><div class="row-actions"><button class="btn small secondary" onclick="downloadDraft(${d.id}, '${escapeHtml(d.filename)}')">⬇️ 下载</button><button class="btn small secondary" onclick="shareDraft(${d.id})">🔗 分享</button><button class="btn small secondary danger" onclick="deleteDraft(${d.id}, '${escapeHtml(d.filename)}')">删</button></div></td></tr>`).join('');
+  } catch (e) { console.error(e); toast('加载草稿失败: ' + e.message, 'error'); }
+}
+function draftPage(delta) { draftPageNum = Math.max(1, draftPageNum + delta); refreshDrafts(); }
+function fmtBytes(n) { if (n < 1024) return n + ' B'; if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB'; if (n < 1024*1024*1024) return (n/1024/1024).toFixed(2) + ' MB'; return (n/1024/1024/1024).toFixed(2) + ' GB'; }
+async function downloadDraft(id, filename) { try { const r = await fetch(`/api/drafts/${id}/download`); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); const blob = await r.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000); toast('下载已开始', 'success'); setTimeout(() => { refreshDrafts(); refreshDraftQuota(); }, 500); } catch (e) { toast('下载失败: ' + e.message, 'error'); } }
+async function deleteDraft(id, filename) { if (!confirm(`确认硬删草稿「${filename}」？\n⚠️ 磁盘文件 + DB 记录一起删，不可恢复。`)) return; try { const r = await fetch(`/api/drafts/${id}`, { method: 'DELETE' }); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); toast('已删除', 'success'); refreshDrafts(); refreshDraftQuota(); } catch (e) { toast('删除失败: ' + e.message, 'error'); } }
+async function shareDraft(id) { const ttl = prompt('分享链接有效期（天，1~90，默认 7）:', '7'); if (ttl === null) return; const n = parseInt(ttl, 10); if (isNaN(n) || n < 1 || n > 90) { toast('请输入 1~90 之间的数字', 'warn'); return; } try { const r = await fetch(`/api/drafts/${id}/share?ttl_days=${n}`, { method: 'POST' }); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); const data = await r.json(); const url = window.location.origin + '/share/' + data.share.token; $('#share-link').textContent = url; $('#modal-share').classList.add('active'); } catch (e) { toast('分享失败: ' + e.message, 'error'); } }
+
+// ============== Upload ==============
+const ALLOWED_EXT = ['.mp4','.mov','.avi','.mkv','.webm'];
+const MAX_FILE_SIZE = 1073741824; // 1GB
+async function handleFiles(fileList) {
+  const kind = $('#upload-kind').value;
+  const queue = $('#upload-queue');
+  for (const file of Array.from(fileList)) {
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!ALLOWED_EXT.includes(ext)) { toast(`不支持的文件格式: ${ext}`, 'error'); continue; }
+    if (file.size > MAX_FILE_SIZE) { toast(`文件超过 1GB 限制: ${file.name}`, 'error'); continue; }
+    const itemId = 'up-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
+    const itemEl = document.createElement('div');
+    itemEl.id = itemId;
+    itemEl.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px;';
+    itemEl.innerHTML = `<span class="small mono" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span><span class="small dim">${fmtBytes(file.size)}</span><span class="small dim">${kind === 'main' ? '主视频' : 'B-roll'}</span><div class="progress-bar" style="width:100px;"><div style="width:0%;transition:width .2s;"></div></div><span class="small mono" id="${itemId}-pct">0%</span>`;
+    queue.appendChild(itemEl);
+    uploadFile(file, kind, itemId);
+  }
+  // Clear the input so the same file can be selected again
+  $('#file-input').value = '';
+}
+async function uploadFile(file, kind, itemId) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('kind', kind);
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/uploads');
+    xhr.setRequestHeader('Authorization', 'Bearer ' + localStorage.getItem('capcut_token'));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round(e.loaded / e.total * 100);
+        const bar = document.querySelector(`#${itemId} .progress-bar > div`);
+        const txt = document.getElementById(`${itemId}-pct`);
+        if (bar) bar.style.width = pct + '%';
+        if (txt) txt.textContent = pct + '%';
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        toast(`上传成功: ${file.name}`, 'success');
+        const el = document.getElementById(itemId);
+        if (el) setTimeout(() => el.remove(), 2000);
+        refreshQuota();
+      } else {
+        const data = JSON.parse(xhr.responseText || '{}');
+        toast(`上传失败: ${data.detail || xhr.status}`, 'error');
+        const txt = document.getElementById(`${itemId}-pct`);
+        if (txt) txt.textContent = '❌';
+      }
+    };
+    xhr.onerror = () => { toast(`网络错误: ${file.name}`, 'error'); };
+    xhr.send(formData);
+  } catch (e) { toast(`上传异常: ${e.message}`, 'error'); }
+}
+
+async function refreshQuota() {
+  try {
+    const r = await fetch('/api/uploads/quota');
+    const q = await r.json();
+    const assetBar = $('#asset-quota-bar');
+    const assetText = $('#asset-quota-text');
+    const assetPct = q.quota_bytes > 0 ? (q.used_bytes / q.quota_bytes * 100) : 0;
+    assetBar.style.width = Math.min(100, assetPct).toFixed(1) + '%';
+    assetBar.style.background = assetPct > 95 ? 'var(--danger)' : assetPct > 80 ? 'var(--accent-2)' : 'var(--accent-3)';
+    assetText.textContent = `${fmtBytes(q.used_bytes)} / ${fmtBytes(q.quota_bytes)} (${assetPct.toFixed(1)}%)`;
+    if (q.warning) toast('素材配额接近上限，请清理不需要的素材', 'warn', 5000);
+  } catch (e) { console.error('quota error:', e); }
+  // Also refresh draft quota bar
+  try {
+    const r = await fetch('/api/drafts/quota');
+    const q = await r.json();
+    const draftBar = $('#draft-quota-bar');
+    const draftText = $('#draft-quota-text-bar');
+    if (q.unlimited) { draftBar.style.width = '5%'; draftBar.style.background = 'var(--accent-3)'; draftText.textContent = `${q.used_mb} MB · 无限制`; }
+    else { const pct = q.quota_bytes > 0 ? (q.used_bytes / q.quota_bytes * 100) : 0; draftBar.style.width = Math.min(100, pct).toFixed(1) + '%'; draftBar.style.background = pct > 90 ? 'var(--danger)' : pct > 70 ? 'var(--accent-2)' : 'var(--accent-3)'; draftText.textContent = `${q.used_mb} / ${q.quota_mb} MB (${pct.toFixed(1)}%)`; }
+  } catch (e) { console.error(e); }
+}
+
+// ============== Assets ==============
+async function refreshAssets() {
+  try {
+    const source = $('#filter-source').value;
+    const kind = $('#filter-kind').value;
+    let url = '/api/assets?limit=500';
+    if (source) url += `&source=${source}`;
+    if (kind) url += `&kind=${kind}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    const assets = data.assets || [];
+    const tbody = $('#assets-tbody');
+    $('#badge-assets').textContent = assets.length;
+    if (assets.length === 0) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无素材</td></tr>'; return; }
+    tbody.innerHTML = assets.map(a => {
+      const sourceLabel = a.source === 'web_upload' ? '<span style="color:var(--accent);">Web上传</span>' : '<span style="color:var(--fg-2);">客户端</span>';
+      const kindLabel = a.kind === 'main' ? '主视频' : 'B-roll';
+      const canDelete = a.source === 'web_upload';
+      return `<tr>
+        <td class="mono">${a.id}</td>
+        <td class="mono small" title="${escapeHtml(a.name || a.filename || '')}">${escapeHtml(a.name || a.filename || '-')}</td>
+        <td class="small">${kindLabel}</td>
+        <td class="mono small">${a.size ? fmtBytes(a.size) : '-'}</td>
+        <td class="mono small">${a.duration ? a.duration.toFixed(1) + 's' : '-'}</td>
+        <td class="small">${sourceLabel}</td>
+        <td class="small mono">${fmtTime(a.created_at)}</td>
+        <td><div class="row-actions">
+          ${canDelete ? `<button class="btn small secondary danger" onclick="deleteUpload(${a.id})">删</button>` : '<span class="dim small">-</span>'}
+        </div></td>
+      </tr>`;
+    }).join('');
+  } catch (e) { console.error(e); toast('加载素材失败: ' + e.message, 'error'); }
+}
+async function deleteUpload(id) {
+  if (!confirm(`确认删除此素材？`)) return;
+  try {
+    const r = await fetch(`/api/uploads/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    toast('已删除', 'success');
+    refreshAssets();
+    refreshQuota();
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+// ============== Settings ==============
+async function changePassword() {
+  const oldPwd = $('#old-pwd').value; const newPwd = $('#new-pwd').value; const confirmPwd = $('#confirm-pwd').value;
+  if (!oldPwd) { toast('请输入旧密码', 'warn'); return; } if (newPwd.length < 6) { toast('新密码太短（≥6 位）', 'warn'); return; } if (newPwd !== confirmPwd) { toast('两次新密码不一致', 'warn'); return; }
+  try { const r = await fetch('/api/auth/change-password', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({old_password: oldPwd, new_password: newPwd}) }); if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`); toast('密码已修改', 'success'); $('#old-pwd').value = ''; $('#new-pwd').value = ''; $('#confirm-pwd').value = ''; } catch (e) { toast('修改失败: ' + e.message, 'error'); }
+}
+
+// 启动
+refreshQuota();
+setInterval(refreshTasks, 5000);
+fetch('/api/drafts?page=1&page_size=1').then(r => r.json()).then(d => { $('#badge-drafts').textContent = d.total || 0; }).catch(() => {});
+fetch('/api/assets?limit=1').then(r => r.json()).then(d => { $('#badge-assets').textContent = (d.assets || []).length || 0; }).catch(() => {});
+</script>
+</body>
+</html>

@@ -46,11 +46,11 @@ with client:
     check("GET /api/workflows 无 token → 401", r.status_code == 401,
           f"got {r.status_code}")
 
-    r = client.get("/api/jobs")
-    check("GET /api/jobs 无 token → 401", r.status_code == 401)
+    r = client.get("/api/tasks")
+    check("GET /api/tasks 无 token → 401", r.status_code == 401)
 
-    r = client.post("/api/jobs", json={})
-    check("POST /api/jobs 无 token → 401", r.status_code == 401)
+    r = client.post("/api/tasks", json={})
+    check("POST /api/tasks 无 token → 401", r.status_code == 401)
 
     # 4. 错误密码登录
     r = client.post("/api/auth/login", json={"username": "xiaoma", "password": "wrong"})
@@ -74,8 +74,8 @@ with client:
     check("返回了 6+ 工作流", len(data.get("workflows", [])) >= 6,
           f"count={len(data.get('workflows', []))}")
 
-    r = client.get("/api/jobs", headers=headers)
-    check("GET /api/jobs 带 token → 200", r.status_code == 200)
+    r = client.get("/api/tasks", headers=headers)
+    check("GET /api/tasks 带 token → 200", r.status_code == 200)
 
     # 7. /api/auth/me
     r = client.get("/api/auth/me", headers=headers)

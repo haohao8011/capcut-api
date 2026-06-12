@@ -76,6 +76,8 @@ class User(Base):
     # 草稿云端存储 quota（MB）。NULL = 用环境变量默认值；0 = 不限
     # 由 db_models._migrate_add_columns() 在 init_all_tables 时补列
     quota_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 素材上传 quota（MB）。NULL = 用环境变量默认值；0 = 不限
+    asset_quota_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )
