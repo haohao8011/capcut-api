@@ -88,3 +88,6 @@ deploy.tar.gz
 # 环境配置
 .env
 .env.local
+
+# AI 协作笔记（私有，含服务器 IP / 个人偏好 / 工作流，不公开）
+agents.md
