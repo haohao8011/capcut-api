@@ -250,7 +250,7 @@ document.getElementById('theme-btn')?.addEventListener('click', () => {
 // If already logged in, check admin status
 if (localStorage.getItem('capcut_token')) {
   fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(me => {
-    if (me && me.is_admin) window.location.href = '/admin/';
+    if (me && me.is_admin) window.location.href = '/console/';
     else if (me) {
       // Non-admin: show notice, clear token
       document.getElementById('error-msg').textContent = '此入口仅限管理员访问';
@@ -366,7 +366,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     localStorage.setItem('capcut_user', username);
     // Only admin allowed
     if (data.is_admin) {
-      window.location.href = '/admin/';
+      window.location.href = '/console/';
     } else {
       errEl.textContent = '此入口仅限管理员访问';
       localStorage.removeItem('capcut_token');

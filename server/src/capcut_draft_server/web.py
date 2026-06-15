@@ -220,15 +220,16 @@ def root_redirect():
 
 
 @app.get("/console", include_in_schema=False)
+@app.get("/console/", include_in_schema=False)
 def console_redirect():
     """管理后台 → /admin/。"""
     return RedirectResponse(url="/admin/")
 
 
-@app.get("/console/login", include_in_schema=False)
-def console_login_redirect():
-    """管理后台登录 → /admin/login.html。"""
-    return RedirectResponse(url="/admin/login.html")
+@app.get("/console/{path:path}", include_in_schema=False)
+def console_spa(path: str):
+    """管理后台 History 路由：/console/users 等返回 index.html。"""
+    return _serve_spa(ADMIN_DIR, path)
 
 
 @app.get("/login", include_in_schema=False)

@@ -72,10 +72,6 @@ models/
 
 # 用户自建工作流（个人配置，不入库）
 config/workflows.user.json
-config/client.yaml
-
-# 客户端日志
-client.log
 
 # 临时脚本（不删，按需手动启用）
 tests/_*.py
@@ -85,6 +81,9 @@ tests/_*.py
 data/
 !data/.gitkeep
 !data/README.md
+
+# 部署打包文件
+deploy.tar.gz
 
 # 环境配置
 .env

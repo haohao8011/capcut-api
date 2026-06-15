@@ -299,7 +299,7 @@
           <div class="card-head">
             <h2>素材库</h2>
             <div class="row-actions">
-              <select id="filter-folder" class="btn secondary small" style="padding: 4px 10px;" onchange="refreshAssets()">
+              <select id="filter-folder" class="btn secondary small" style="padding: 4px 10px;" onchange="navigateFolder(this.value || null)">
                 <option value="">全部文件夹</option>
               </select>
               <select id="filter-source" class="btn secondary small" style="padding: 4px 10px;" onchange="refreshAssets()">
@@ -538,7 +538,7 @@ function activateSection(route) {
   $$('.nav-item').forEach(x => x.classList.toggle('active', x.dataset.nav === route));
   $$('.section').forEach(x => x.classList.toggle('active', x.dataset.section === route));
   $('#page-title').textContent = pageTitles[route] || '';
-  if (route === 'upload') refreshQuota();
+  if (route === 'upload') { loadFolders(); refreshQuota(); }
   if (route === 'assets') { loadFolders(); refreshAssets(); }
   if (route === 'tasks') refreshTasks();
   if (route === 'drafts') { refreshDraftQuota(); refreshDrafts(); }
@@ -748,13 +748,44 @@ async function deleteFolder(id, name) {
   } catch (e) { toast('删除失败: ' + e.message, 'error'); }
 }
 
-function navigateFolder(folderId) {
+async function renameFolder(id, oldName) {
+  const name = prompt('输入新名称：', oldName);
+  if (!name || !name.trim() || name.trim() === oldName) return;
+  try {
+    const r = await fetch(`/api/folders/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('capcut_token') },
+      body: JSON.stringify({ name: name.trim() })
+    });
+    if (!r.ok) { const d = await r.json(); toast(d.detail || '重命名失败', 'error'); return; }
+    toast('已重命名', 'success');
+    await loadFolders();
+    refreshAssets();
+  } catch (e) { toast('重命名失败: ' + e.message, 'error'); }
+}
+
+async function navigateFolder(folderId) {
   currentFolderId = folderId;
+  const filterSel = $('#filter-folder');
   const bc = $('#folder-breadcrumb');
+
+  if (filterSel) filterSel.value = folderId || '';
+
   if (folderId) {
+    // 加载文件夹信息构建面包屑
+    const folders = await loadFolders();
+    const path = [];
+    let fid = folderId;
+    while (fid) {
+      const f = folders.find(x => x.id === fid);
+      if (!f) break;
+      path.unshift(f);
+      fid = f.parent_id;
+    }
     bc.style.display = 'block';
-    // TODO: build breadcrumb path
-    bc.innerHTML = `<span class="small dim">当前位置：</span><a href="#" class="small" onclick="navigateFolder(null); return false;">根目录</a> / <span class="small" style="color: var(--accent);">文件夹 #${folderId}</span>`;
+    bc.innerHTML = `<span class="small dim">当前位置：</span>` +
+      `<a href="#" class="small" onclick="navigateFolder(null); return false;">根目录</a>` +
+      path.map(f => ` / <a href="#" class="small" onclick="navigateFolder(${f.id}); return false;">${escapeHtml(f.name)}</a>`).join('');
   } else {
     bc.style.display = 'none';
   }
@@ -862,40 +893,47 @@ async function refreshAssets() {
     const data = await r.json();
     let assets = data.assets || [];
 
-    // 前端按文件夹筛选
-    if (folderFilter === '0') {
-      // 根目录：只显示 web_upload 且 folder_id 为 null 的
-      assets = assets.filter(a => a.source === 'web_upload' && !a.folder_id);
-    } else if (folderFilter) {
-      const fid = parseInt(folderFilter);
-      assets = assets.filter(a => a.folder_id === fid);
-    }
-
     // 加载文件夹列表
     const foldersR = await fetch('/api/folders');
     const foldersData = await foldersR.json();
     const folders = foldersData.folders || [];
 
-    const tbody = $('#assets-tbody');
-    $('#badge-assets').textContent = assets.length;
+    // 按文件夹筛选（只对 web_upload 素材生效）
+    if (folderFilter === '0') {
+      // 根目录：web_upload 的 folder_id 为 null + 所有客户端扫盘素材
+      assets = assets.filter(a => {
+        if (a.source === 'client_scan') return true;
+        return !a.folder_id;
+      });
+    } else if (folderFilter) {
+      const fid = parseInt(folderFilter);
+      // 只筛选 web_upload 中属于该文件夹的素材
+      assets = assets.filter(a => a.source === 'web_upload' && a.folder_id === fid);
+    }
+    // folderFilter 为空时显示所有素材
 
-    // 显示子文件夹（如果在文件夹筛选模式下）
+    const tbody = $('#assets-tbody');
+
+    // 构建文件夹行
     let folderRows = '';
+    let folderCount = 0;
     if (folderFilter && folderFilter !== '0') {
       const fid = parseInt(folderFilter);
       const children = folders.filter(f => f.parent_id === fid);
-      folderRows = children.map(f => `<tr style="cursor:pointer;" onclick="document.getElementById('filter-folder').value='${f.id}'; refreshAssets();">
+      folderCount = children.length;
+      folderRows = children.map(f => `<tr style="cursor:pointer;" onclick="navigateFolder(${f.id})">
         <td></td><td>📁 <strong>${escapeHtml(f.name)}</strong></td><td>文件夹</td><td>-</td><td>-</td><td>-</td><td>${fmtTime(f.created_at)}</td>
-        <td><div class="row-actions"><button class="btn small secondary danger" onclick="event.stopPropagation(); deleteFolder(${f.id}, '${escapeHtml(f.name)}')">删</button></div></td>
+        <td><div class="row-actions"><button class="btn small secondary" onclick="event.stopPropagation(); renameFolder(${f.id}, '${escapeHtml(f.name)}')">改名</button><button class="btn small secondary danger" onclick="event.stopPropagation(); deleteFolder(${f.id}, '${escapeHtml(f.name)}')">删</button></div></td>
       </tr>`).join('');
     } else if (!folderFilter) {
-      // 显示顶层文件夹
       const topFolders = folders.filter(f => !f.parent_id);
-      folderRows = topFolders.map(f => `<tr style="cursor:pointer;" onclick="document.getElementById('filter-folder').value='${f.id}'; refreshAssets();">
+      folderCount = topFolders.length;
+      folderRows = topFolders.map(f => `<tr style="cursor:pointer;" onclick="navigateFolder(${f.id})">
         <td></td><td>📁 <strong>${escapeHtml(f.name)}</strong></td><td>文件夹</td><td>-</td><td>-</td><td>-</td><td>${fmtTime(f.created_at)}</td>
-        <td><div class="row-actions"><button class="btn small secondary danger" onclick="event.stopPropagation(); deleteFolder(${f.id}, '${escapeHtml(f.name)}')">删</button></div></td>
+        <td><div class="row-actions"><button class="btn small secondary" onclick="event.stopPropagation(); renameFolder(${f.id}, '${escapeHtml(f.name)}')">改名</button><button class="btn small secondary danger" onclick="event.stopPropagation(); deleteFolder(${f.id}, '${escapeHtml(f.name)}')">删</button></div></td>
       </tr>`).join('');
     }
+    $('#badge-assets').textContent = `${folderCount} 📁 ${assets.length} 📄`;
 
     if (assets.length === 0 && !folderRows) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无素材</td></tr>'; return; }
     if (assets.length === 0 && folderRows) { tbody.innerHTML = folderRows + '<tr><td colspan="8" class="empty">此文件夹暂无素材</td></tr>'; return; }
@@ -965,7 +1003,13 @@ const initialRoute = getRouteFromUrl();
 navigateTo(initialRoute, true);
 setInterval(refreshTasks, 5000);
 fetch('/api/drafts?page=1&page_size=1').then(r => r.json()).then(d => { $('#badge-drafts').textContent = d.total || 0; }).catch(() => {});
-fetch('/api/assets?limit=1').then(r => r.json()).then(d => { $('#badge-assets').textContent = (d.assets || []).length || 0; }).catch(() => {});
+fetch('/api/assets?limit=1').then(r => r.json()).then(d => {
+  const ac = (d.assets || []).length || 0;
+  fetch('/api/folders').then(r => r.json()).then(f => {
+    const fc = (f.folders || []).length || 0;
+    $('#badge-assets').textContent = `${fc} 📁 ${ac} 📄`;
+  }).catch(() => { $('#badge-assets').textContent = `${ac} 📄`; });
+}).catch(() => {});
 </script>
 </body>
 </html>

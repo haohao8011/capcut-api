@@ -112,15 +112,13 @@ CLI 和 Web 客户端（C/S 模式）共用底层 `builder.py` / `asr.py` / `cut
 capcut-api/
 ├── config/                       # ★ 工作流持久化（用户部分 git 忽略）
 │   ├── workflows.builtin.json    # 6 个内置工作流（git 跟踪）
-│   ├── workflows.user.json       # 用户保存的工作流（git 忽略）
-│   └── client.example.yaml       # ★ 客户端配置示例（git 跟踪）
+│   └── workflows.user.json       # 用户保存的工作流（git 忽略）
 ├── data/                         # ★ 运行时数据（git 忽略）
 │   ├── capcut.db                 # SQLite（默认）
 │   ├── drafts/                   # ★ 草稿云端存储（按 owner_id 子目录）
 │   └── uploads/                  # ★ Web 上传素材存储（按 user_id 子目录）
 ├── deploy/                       # ★ 阿里云部署
 │   ├── aliyun-server.sh          # ★ 一键部署服务端（Ubuntu + nginx + HTTPS）
-│   ├── aliyun-client.sh          # ★ 一键部署客户端（systemd --user）
 │   ├── capcut-draft.service      # ★ systemd unit（参考模板）
 │   └── README.md                 # 部署说明
 ├── common/                       # ★ 共享核心包（capcut-draft-core）
@@ -173,10 +171,8 @@ capcut-api/
 │   ├── test_tasks.py             # 任务系统 端到端（12 步）
 │   ├── test_wizard.py            # ★ wizard 流程端到端（9 步）
 │   └── ...
-├── .venv/                        # 虚拟环境（服务端）
-├── .venv-client/                 # ★ 客户端专用 venv（员工机器）
-├── install-client.bat            # ★ 客户端首次安装（点一次就行）
-├── start-client.bat / stop-client.bat   # 客户端启停
+├── scripts/                      # ★ 部署脚本
+│   └── deploy.ps1                #   一键部署到阿里云 ECS
 └── agents.md                     # 本文件
 ```
 
@@ -184,10 +180,8 @@ capcut-api/
 
 | 脚本 | 用途 |
 | --- | --- |
-| `start-client.bat` | **双击启动客户端**（worker + 本地 UI 8001） |
-| `stop-client.bat` | 停客户端 |
-| `deploy/aliyun-server.sh` | 一键部署服务端到阿里云 ECS（nginx + systemd + Let's Encrypt） |
-| `deploy/aliyun-client.sh` | 一键部署客户端到员工机器（systemd --user） |
+| `scripts/deploy.ps1` | **一键部署到服务器**（tar + scp + 解压 + pip + 重启） |
+| `deploy/aliyun-server.sh` | 首次部署服务端到阿里云 ECS（systemd + 环境配置） |
 
 ## Web 服务端 API 端点
 
@@ -281,8 +275,9 @@ capcut-api/
 | `/share/{token}/download?confirm=1` | GET | **公开** | 一次性下载（用后即焚）|
 
 **Quota 规则**：
-- 默认 5GB/人（`CAPCUT_DRAFT_QUOTA_MB`）
-- 用户表 `users.quota_mb` 字段可单独覆盖；0 = 不限
+- 素材默认 3GB/人（`CAPCUT_ASSET_QUOTA_MB`）
+- 草稿默认 2GB/人（`CAPCUT_DRAFT_QUOTA_MB`）
+- 用户表 `users.quota_mb` / `users.asset_quota_mb` 字段可单独覆盖；0 = 不限
 - 上传前 `used + file_size > quota` → 413，提示"请删除历史草稿"
 - 不自动删、不定期清（草稿是用户资产）
 
@@ -392,22 +387,44 @@ capcut-api/
 ### 本地 SSH 密钥
 - 密钥路径：`D:\Offices\三鼎.pem`
 
-### 服务端升级（手动同步，无 git remote）
+### 服务端升级（**用 deploy.ps1 一键部署**）
+项目根目录下跑：
+
+```powershell
+# 默认：tar + scp + 解压 + pip install + 重启
+.\scripts\deploy.ps1
+
+# 只传代码不重启（手动重启用）
+.\scripts\deploy.ps1 -SkipRestart
+
+# 代码没改依赖时（更快，跳过 pip）
+.\scripts\deploy.ps1 -SkipPip
+```
+
+**首次部署**（裸服务器）需先跑 `.\deploy\aliyun-server.sh` 完成系统装 + systemd 注册，之后就一直用 `deploy.ps1` 增量更新。
+
+### 手动部署（绕过脚本，仅做应急参考）
 ```bash
-# 1. 本地打包代码（排除 .venv, .git, __pycache__, data/）
-tar -czf deploy.tar.gz --exclude='.venv' --exclude='.venv-client' --exclude='.git' --exclude='__pycache__' --exclude='.pytest_cache' --exclude='data' --exclude='*.db' .
+# 1. 本地打包代码（排除 .venv, .git, __pycache__, data/, *.db, .env）
+tar -czf deploy.tar.gz --exclude='.venv' --exclude='.venv-client' --exclude='.git' --exclude='.env' --exclude='__pycache__' --exclude='data' --exclude='*.db' .
 
 # 2. 上传到服务器
 scp -i "D:\Offices\三鼎.pem" deploy.tar.gz root@8.129.83.166:/opt/capcut-draft/
 
 # 3. SSH 到服务器解压并重启
-ssh -i "D:\Offices\三鼎.pem" root@8.129.83.166 "cd /opt/capcut-draft && tar -xzf deploy.tar.gz && .venv/bin/pip install -e .[server] -i https://pypi.tuna.tsinghua.edu.cn/simple && sudo systemctl restart capcut-server && systemctl status capcut-server"
+ssh -i "D:\Offices\三鼎.pem" root@8.129.83.166 "cd /opt/capcut-draft && tar -xzf deploy.tar.gz && sudo -u capcut .venv/bin/pip install -e ./common -e ./server -i https://pypi.tuna.tsinghua.edu.cn/simple && sudo systemctl restart capcut-server"
 ```
 
 ### 检查日志
 ```bash
 ssh -i "D:\Offices\三鼎.pem" root@8.129.83.166 "journalctl -u capcut-server --since '1 hour ago' -f"
 ```
+
+### 安全约束
+- **永远不要覆盖** `/var/lib/capcut-draft/capcut.db`（用户数据/审计日志）
+- **永远不要覆盖** `/opt/capcut-draft/.env`（JWT secret、DB URL 都在这）
+- deploy.ps1 默认排除 .env / *.db / data/，不要随便改 exclude 规则
+- 服务器权限：`/opt/capcut-draft/` 跑完是 `capcut:capcut`（gunicorn 跑在 capcut 用户下）
 
 ## 已知问题 / 进度
 
@@ -492,6 +509,7 @@ ssh -i "D:\Offices\三鼎.pem" root@8.129.83.166 "journalctl -u capcut-server --
   - 上传素材：可选择目标文件夹，支持文件夹上传
   - 素材移动：可将素材移动到指定文件夹
 - [x] ★ **拆分 web_admin.py**（2026-06-12）：把 `web_uploads.py` 里的 admin 路由（5 review + 1 stats）拆到独立文件，`web_uploads.py` 648 → 447 行；`_resolve_upload_path` 改公开（admin 复用）；新加协作规则"不要把代码挤在一个文件写"
+- [x] ★ **一键部署脚本 deploy.ps1**（2026-06-12）：项目根目录 `.\scripts\deploy.ps1` 一键 tar+scp+解压+pip+重启；6 步 pipeline，含 health check；`Clean-Bash` 函数去掉 PowerShell here-string 的 `\r`（首次跑没这个会全报错）；服务器已升级到 `c31ae62`（拆 web_admin 那个）
 
 ### 未做 / 待办
 - [ ] 真实即创视频端到端测试（需要用户提供素材）

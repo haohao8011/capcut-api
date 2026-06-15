@@ -55,7 +55,7 @@ DRAFTS_DIR = Path(os.environ.get("CAPCUT_DRAFTS_DIR", DATA_DIR / "drafts"))
 DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # 单人 quota 默认值（MB）— 用户表里有 quota_mb 字段，NULL 时用这个
-DEFAULT_QUOTA_MB = int(os.environ.get("CAPCUT_DRAFT_QUOTA_MB", "5120"))  # 5GB
+DEFAULT_QUOTA_MB = int(os.environ.get("CAPCUT_DRAFT_QUOTA_MB", "2048"))  # 2GB
 
 # 分享链接默认有效期
 SHARE_TTL_DAYS = int(os.environ.get("CAPCUT_DRAFT_SHARE_TTL_DAYS", "7"))
